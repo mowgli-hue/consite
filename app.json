@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "Consite",
+    "slug": "consite",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "consite",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "world.junglelabs.consite",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Consite uses your location only when you tap Clock In, to verify you are at the project site. Your location is not tracked at any other time.",
+        "NSCameraUsageDescription": "Consite uses the camera to take photos for site documentation and form attachments.",
+        "NSPhotoLibraryUsageDescription": "Consite accesses your photo library to attach images to forms and project records."
+      }
+    },
+    "android": {
+      "package": "world.junglelabs.consite",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Consite to use your location when you clock in."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Consite to attach photos to forms.",
+          "cameraPermission": "Allow Consite to use the camera for site photos."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "firebaseApiKey": "REPLACE_ME",
+      "firebaseAuthDomain": "REPLACE_ME",
+      "firebaseProjectId": "REPLACE_ME",
+      "firebaseStorageBucket": "REPLACE_ME",
+      "firebaseMessagingSenderId": "REPLACE_ME",
+      "firebaseAppId": "REPLACE_ME"
+    }
+  }
+}

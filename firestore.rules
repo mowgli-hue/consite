@@ -1,0 +1,181 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isMe(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() == 'admin';
+    }
+
+    function isProjectMember(pid) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/projects/$(pid)/members/$(request.auth.uid));
+    }
+
+    function memberPermissions(pid) {
+      return get(/databases/$(database)/documents/projects/$(pid)/members/$(request.auth.uid)).data.permissions;
+    }
+
+    function hasProjectPerm(pid, perm) {
+      return isAdmin() || (isProjectMember(pid) && perm in memberPermissions(pid));
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Users — admins manage; workers read their own doc.
+    // ─────────────────────────────────────────────────────
+
+    match /users/{uid} {
+      allow read: if isMe(uid) || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Projects
+    // ─────────────────────────────────────────────────────
+
+    match /projects/{pid} {
+      allow read: if isAdmin() || isProjectMember(pid);
+      allow create, update, delete: if isAdmin();
+
+      // Members — admins manage
+      match /members/{uid} {
+        allow read: if isMe(uid) || isAdmin() || isProjectMember(pid);
+        allow write: if isAdmin();
+      }
+
+      // Plans — view requires project access; admin uploads (v0.2: workers w/ perm)
+      match /plans/{planId} {
+        allow read: if isProjectMember(pid) || isAdmin();
+        allow create, update, delete: if isAdmin();
+      }
+
+      // Media — workers w/ upload perm can create; only the uploader or admin can delete
+      match /media/{mediaId} {
+        allow read: if isProjectMember(pid) || isAdmin();
+        allow create: if hasProjectPerm(pid, 'worker.media.upload') &&
+                         request.resource.data.uploadedBy == request.auth.uid;
+        allow update: if isAdmin();
+        allow delete: if isAdmin() ||
+                         (resource.data.uploadedBy == request.auth.uid);
+      }
+
+      // Submissions — workers with submit perm can create their own;
+      // only admins and supervisors with approve perm can read others'.
+      match /submissions/{subId} {
+        allow read: if isAdmin() ||
+                       (isProjectMember(pid) && (
+                         resource.data.submittedBy == request.auth.uid ||
+                         hasProjectPerm(pid, 'supervisor.forms.approve')
+                       ));
+        allow create: if hasProjectPerm(pid, 'worker.forms.submit') &&
+                         request.resource.data.submittedBy == request.auth.uid;
+        // PDF path is appended server-side by Cloud Function
+        allow update: if isAdmin();
+        allow delete: if isAdmin();
+      }
+
+      // Attendance — workers see their own; supervisors see project-wide
+      match /attendance/{attId} {
+        allow read: if isAdmin() ||
+                       resource.data.uid == request.auth.uid ||
+                       hasProjectPerm(pid, 'supervisor.attendance.clockout-others');
+
+        // Create: only for yourself
+        allow create: if isProjectMember(pid) &&
+                         request.resource.data.uid == request.auth.uid;
+
+        // Update (clock out): self, supervisor, or admin
+        allow update: if isAdmin() ||
+                         resource.data.uid == request.auth.uid ||
+                         hasProjectPerm(pid, 'supervisor.attendance.clockout-others');
+
+        allow delete: if isAdmin();
+      }
+
+      // Deficiencies (punch list) — any project member can report; admins
+      // and supervisors can update status/resolve.
+      match /deficiencies/{defId} {
+        allow read: if isAdmin() || isProjectMember(pid);
+        allow create: if isProjectMember(pid) &&
+                         request.resource.data.reportedBy == request.auth.uid;
+        allow update: if isAdmin() ||
+                         hasProjectPerm(pid, 'supervisor.forms.approve') ||
+                         resource.data.reportedBy == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
+      // Expenses (job costing from receipts) — project members can record;
+      // admins manage. Supervisor can approve in v0.3.
+      match /expenses/{expId} {
+        allow read: if isAdmin() || isProjectMember(pid);
+        allow create: if isProjectMember(pid) &&
+                         request.resource.data.recordedBy == request.auth.uid;
+        allow update: if isAdmin() ||
+                         resource.data.recordedBy == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
+      // Daily logs — one per date. Supervisors and admins write; project
+      // members can read.
+      match /dailyLogs/{date} {
+        allow read: if isAdmin() || isProjectMember(pid);
+        allow create, update: if isAdmin() ||
+                                  hasProjectPerm(pid, 'supervisor.forms.approve') ||
+                                  isProjectMember(pid); // any member for v0.2; v0.3 restricts
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ─────────────────────────────────────────────────────
+    // User certifications — workers manage their own; admins read all.
+    // ─────────────────────────────────────────────────────
+
+    match /users/{uid}/certifications/{certId} {
+      allow read: if isMe(uid) || isAdmin();
+      allow create, update, delete: if isMe(uid) || isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Form schemas — read by anyone signed in, write by admin.
+    // ─────────────────────────────────────────────────────
+
+    match /forms/{formId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Templates — read by anyone signed in, write by admin.
+    // ─────────────────────────────────────────────────────
+
+    match /templates/{tid} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Dashboard config — read by signed-in, write by admin.
+    // ─────────────────────────────────────────────────────
+
+    match /dashboards/{role}/modules/{mid} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

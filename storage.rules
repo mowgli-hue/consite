@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() == 'admin';
+    }
+
+    function isProjectMember(pid) {
+      return isSignedIn() &&
+        firestore.exists(/databases/(default)/documents/projects/$(pid)/members/$(request.auth.uid));
+    }
+
+    // ──────────────────────────────────────────────
+    // Project assets: plans, media, submissions, signatures
+    // ──────────────────────────────────────────────
+
+    match /projects/{pid}/plans/{planId}/{filename} {
+      allow read: if isProjectMember(pid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /projects/{pid}/media/{mediaId}/{filename} {
+      allow read: if isProjectMember(pid) || isAdmin();
+      allow write: if (isProjectMember(pid) || isAdmin())
+                   && request.resource.size < 25 * 1024 * 1024;   // 25 MB cap
+    }
+
+    match /projects/{pid}/submissions/{subId}/{filename} {
+      // Worker can upload to their own submission folder; read scoped to project
+      allow read: if isProjectMember(pid) || isAdmin();
+      allow write: if isProjectMember(pid)
+                   && request.resource.size < 15 * 1024 * 1024;   // 15 MB cap
+    }
+
+    match /projects/{pid}/signatures/{filename} {
+      allow read: if isProjectMember(pid) || isAdmin();
+      allow write: if isProjectMember(pid)
+                   && request.resource.size < 2 * 1024 * 1024;    // 2 MB cap
+    }
+
+    // ──────────────────────────────────────────────
+    // Global templates — admin-managed
+    // ──────────────────────────────────────────────
+
+    match /templates/{tid}/{filename} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ──────────────────────────────────────────────
+    // User avatars
+    // ──────────────────────────────────────────────
+
+    match /users/{uid}/avatar/{filename} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == uid
+                   && request.resource.size < 2 * 1024 * 1024;
+    }
+  }
+}
