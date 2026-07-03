@@ -117,6 +117,7 @@ function iconFor(icon: DashboardModule['icon']): keyof typeof Feather.glyphMap {
     clipboard: 'clipboard',
     image: 'image',
     'file-text': 'file-text',
+    calendar: 'calendar',
     clock: 'clock',
     users: 'users',
     shield: 'shield',

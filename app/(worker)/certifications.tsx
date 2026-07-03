@@ -162,8 +162,8 @@ function StatusBadge({
 }: {
   status: ReturnType<typeof expiryStatus>;
 }) {
-  let bg = colors.successSoft;
-  let fg = colors.success;
+  let bg: string = colors.successSoft;
+  let fg: string = colors.success;
   let text = 'Valid';
 
   if (status.state === 'expired') {

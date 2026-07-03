@@ -12,13 +12,12 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
 const ADMIN_MODULES: Array<{ id: string; label: string; icon: any; subtitle: string; route?: string }> = [
+  { id: 'users', label: 'Users', icon: 'users', subtitle: 'Add workers & supervisors', route: '/(admin)/users' },
+  { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Create & manage sites', route: '/(admin)/projects' },
+  { id: 'reports', label: 'Hours & Reports', icon: 'bar-chart-2', subtitle: 'Attendance & payroll CSV', route: '/(admin)/reports' },
   { id: 'compliance', label: 'Compliance', icon: 'shield', subtitle: 'Cert expiries', route: '/(admin)/compliance' },
-  { id: 'users', label: 'Users', icon: 'users', subtitle: 'Add workers & supervisors' },
-  { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Create & manage sites' },
   { id: 'forms', label: 'Form Builder', icon: 'clipboard', subtitle: 'Design FLHA & inspections' },
-  { id: 'dashboard-modules', label: 'Dashboard', icon: 'grid', subtitle: 'Configure worker menu' },
   { id: 'templates', label: 'Templates', icon: 'file-text', subtitle: 'Safety docs & policies' },
-  { id: 'reports', label: 'Reports', icon: 'bar-chart-2', subtitle: 'Attendance & submissions' },
 ];
 
 export default function AdminDashboard() {

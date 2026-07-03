@@ -15,6 +15,7 @@ export type DashboardIcon =
   | 'shield'       // safety / FLHA
   | 'bell'         // notifications
   | 'bar-chart'    // reports
+  | 'calendar'     // timesheet / schedule
   | 'settings';
 
 export interface DashboardModule {

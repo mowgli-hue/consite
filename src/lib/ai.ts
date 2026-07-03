@@ -41,3 +41,39 @@ export async function analyzeDeficiency(opts: { imageBase64: string; imageMediaT
   const res = await fn(opts);
   return res.data;
 }
+
+export interface ReceiptLineItem {
+  description: string;
+  qtyOrUnit: string;
+  amountCents: number;
+}
+
+export interface ReceiptResult {
+  vendor?: string;
+  date?: string;
+  category: string;
+  subtotalCents: number;
+  gstCents: number;
+  pstCents: number;
+  totalCents: number;
+  lineItems: ReceiptLineItem[];
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export async function analyzeReceipt(opts: { imageBase64: string; imageMediaType: 'image/jpeg' | 'image/png' | 'image/webp'; projectId?: string }): Promise<ReceiptResult> {
+  const fn = httpsCallable<typeof opts, ReceiptResult>(functions, 'aiAnalyzeReceipt');
+  const res = await fn(opts);
+  return res.data;
+}
+
+export interface DailyLogResult {
+  log: string;
+  summary: string;
+  flagged: string[];
+}
+
+export async function generateDailyLog(opts: { projectId: string; dateISO: string }): Promise<DailyLogResult> {
+  const fn = httpsCallable<typeof opts, DailyLogResult>(functions, 'aiGenerateDailyLog');
+  const res = await fn(opts);
+  return res.data;
+}

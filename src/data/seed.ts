@@ -67,6 +67,16 @@ export const SEED_DASHBOARD_MODULES: Array<Omit<DashboardModule, 'id'> & { id: s
     subtitle: 'View your assigned sites',
   },
   {
+    id: 'timesheet',
+    label: 'My Hours',
+    icon: 'calendar',
+    route: '/timesheet',
+    order: 3,
+    visible: true,
+    requiredPermissions: [],
+    subtitle: 'This week’s shifts & totals',
+  },
+  {
     id: 'clock',
     label: 'Clock In / Out',
     icon: 'clock',
