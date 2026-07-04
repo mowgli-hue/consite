@@ -1,32 +1,45 @@
 /**
- * Admin dashboard — entry point for admin features.
+ * Admin dashboard — the office home screen.
  *
- * v0.1 lists the admin modules. v0.3 each becomes a real screen.
+ * Top: live stats (on site now, unread alerts, active projects).
+ * Sections: Today (inbox, hours), Manage (users, projects, compliance),
+ * Coming soon (dimmed placeholders).
  */
 
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
-const ADMIN_MODULES: Array<{ id: string; label: string; icon: any; subtitle: string; route?: string }> = [
+type Module = { id: string; label: string; icon: any; subtitle: string; route?: string };
+
+const TODAY_MODULES: Module[] = [
   { id: 'inbox', label: 'Inbox', icon: 'bell', subtitle: 'Site alerts & reports', route: '/(admin)/inbox' },
-  { id: 'users', label: 'Users', icon: 'users', subtitle: 'Add workers & supervisors', route: '/(admin)/users' },
-  { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Create & manage sites', route: '/(admin)/projects' },
   { id: 'reports', label: 'Hours & Reports', icon: 'bar-chart-2', subtitle: 'Attendance & payroll CSV', route: '/(admin)/reports' },
+];
+
+const MANAGE_MODULES: Module[] = [
+  { id: 'users', label: 'Users', icon: 'users', subtitle: 'Workers & accounts', route: '/(admin)/users' },
+  { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Sites & geofences', route: '/(admin)/projects' },
   { id: 'compliance', label: 'Compliance', icon: 'shield', subtitle: 'Cert expiries', route: '/(admin)/compliance' },
-  { id: 'forms', label: 'Form Builder', icon: 'clipboard', subtitle: 'Design FLHA & inspections' },
-  { id: 'templates', label: 'Templates', icon: 'file-text', subtitle: 'Safety docs & policies' },
+];
+
+const SOON_MODULES: Module[] = [
+  { id: 'forms', label: 'Form Builder', icon: 'clipboard', subtitle: 'Coming soon' },
+  { id: 'templates', label: 'Templates', icon: 'file-text', subtitle: 'Coming soon' },
 ];
 
 export default function AdminDashboard() {
   const { user, signOut } = useAuth();
   const [unread, setUnread] = useState(0);
+  const [onSiteNow, setOnSiteNow] = useState<number | null>(null);
+  const [activeProjects, setActiveProjects] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'notifications'), where('read', '==', false));
@@ -34,12 +47,42 @@ export default function AdminDashboard() {
     return unsub;
   }, []);
 
+  const loadStats = useCallback(async () => {
+    try {
+      const projSnap = await getDocs(query(collection(db, 'projects'), where('active', '==', true)));
+      setActiveProjects(projSnap.size);
+      let open = 0;
+      await Promise.all(projSnap.docs.map(async (p) => {
+        const att = await getDocs(query(
+          collection(db, 'projects', p.id, 'attendance'),
+          where('clockOutAt', '==', null),
+        ));
+        open += att.size;
+      }));
+      setOnSiteNow(open);
+    } catch {
+      setOnSiteNow(null);
+      setActiveProjects(null);
+    }
+  }, []);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await loadStats();
+    setRefreshing(false);
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Admin</Text>
+            <Text style={styles.greeting}>Office Dashboard</Text>
             <Text style={styles.name}>{user?.displayName ?? 'Admin'}</Text>
           </View>
           <Pressable hitSlop={8} onPress={signOut}>
@@ -47,46 +90,66 @@ export default function AdminDashboard() {
           </Pressable>
         </View>
 
-        <View style={styles.grid}>
-          {ADMIN_MODULES.map((m) => (
-            <Pressable
-              key={m.id}
-              style={({ pressed }) => [styles.card, pressed && { opacity: 0.7 }]}
-              onPress={() => m.route && router.push(m.route as any)}
-            >
-              <View style={styles.iconWrap}>
-                <Feather name={m.icon as any} size={22} color={colors.primary} />
-                {m.id === 'inbox' && unread > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.cardLabel}>{m.label}</Text>
-              <Text style={styles.cardSubtitle}>{m.subtitle}</Text>
-            </Pressable>
-          ))}
+        <View style={styles.statsRow}>
+          <Pressable style={styles.stat} onPress={() => router.push('/(admin)/reports' as any)}>
+            <Text style={styles.statNumber}>{onSiteNow ?? '–'}</Text>
+            <Text style={styles.statLabel}>On site now</Text>
+          </Pressable>
+          <Pressable style={styles.stat} onPress={() => router.push('/(admin)/inbox' as any)}>
+            <Text style={[styles.statNumber, unread > 0 && { color: colors.danger }]}>{unread}</Text>
+            <Text style={styles.statLabel}>Unread alerts</Text>
+          </Pressable>
+          <Pressable style={styles.stat} onPress={() => router.push('/(admin)/projects' as any)}>
+            <Text style={styles.statNumber}>{activeProjects ?? '–'}</Text>
+            <Text style={styles.statLabel}>Active sites</Text>
+          </Pressable>
         </View>
 
-        <View style={styles.banner}>
-          <Feather name="info" size={16} color={colors.textSecondary} />
-          <Text style={styles.bannerText}>
-            Admin features are scaffolded for v0.1. Full CRUD UIs land in v0.3.
-          </Text>
-        </View>
+        <Section title="Today" modules={TODAY_MODULES} unread={unread} />
+        <Section title="Manage" modules={MANAGE_MODULES} unread={unread} />
+        <Section title="Coming soon" modules={SOON_MODULES} unread={unread} dim />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+function Section({ title, modules, unread, dim }: { title: string; modules: Module[]; unread: number; dim?: boolean }) {
+  return (
+    <>
+      <Text style={styles.sectionLabel}>{title}</Text>
+      <View style={styles.grid}>
+        {modules.map((m) => (
+          <Pressable
+            key={m.id}
+            style={({ pressed }) => [styles.card, dim && styles.cardDim, pressed && m.route && { opacity: 0.7 }]}
+            onPress={() => m.route && router.push(m.route as any)}
+            disabled={!m.route}
+          >
+            <View style={styles.iconWrap}>
+              <Feather name={m.icon as any} size={22} color={dim ? colors.textTertiary : colors.primary} />
+              {m.id === 'inbox' && unread > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.cardLabel, dim && { color: colors.textTertiary }]}>{m.label}</Text>
+            <Text style={styles.cardSubtitle}>{m.subtitle}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { padding: spacing.lg, paddingBottom: spacing['3xl'] },
+  scroll: { padding: spacing.lg, paddingBottom: spacing['3xl'], maxWidth: 720, width: '100%', alignSelf: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   greeting: { color: colors.textSecondary, fontSize: typography.sizes.sm },
   name: {
@@ -95,9 +158,25 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
     marginTop: 2,
   },
+
+  statsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
+  stat: {
+    flex: 1, alignItems: 'center', paddingVertical: spacing.lg,
+    backgroundColor: colors.surface, borderRadius: radii.lg,
+    borderWidth: 1, borderColor: colors.border, ...shadows.card,
+  },
+  statNumber: { fontSize: 28, fontWeight: typography.weights.bold, color: colors.text },
+  statLabel: { fontSize: typography.sizes.xs, color: colors.textSecondary, marginTop: 2 },
+
+  sectionLabel: {
+    fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.textSecondary,
+    textTransform: 'uppercase', letterSpacing: 0.5, marginTop: spacing.lg, marginBottom: spacing.sm,
+  },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   card: {
     width: '48%',
+    minWidth: 200,
+    flexGrow: 1,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,
@@ -105,6 +184,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...shadows.card,
   },
+  cardDim: { opacity: 0.6 },
   iconWrap: {
     width: 40, height: 40, borderRadius: radii.md,
     backgroundColor: colors.primarySoft,
@@ -127,14 +207,4 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     color: colors.textSecondary,
   },
-  banner: {
-    marginTop: spacing.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.lg,
-    backgroundColor: colors.warningSoft,
-    borderRadius: radii.md,
-  },
-  bannerText: { color: colors.textSecondary, flex: 1, fontSize: typography.sizes.sm },
 });
