@@ -177,5 +177,15 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+
+    // ─────────────────────────────────────────────────────
+    // Notifications — office inbox. Written by Cloud Functions
+    // (Admin SDK bypasses rules); admins read + mark read.
+    // ─────────────────────────────────────────────────────
+
+    match /notifications/{nid} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin();
+    }
   }
 }

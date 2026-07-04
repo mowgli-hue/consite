@@ -4,14 +4,18 @@
  * v0.1 lists the admin modules. v0.3 each becomes a real screen.
  */
 
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
 const ADMIN_MODULES: Array<{ id: string; label: string; icon: any; subtitle: string; route?: string }> = [
+  { id: 'inbox', label: 'Inbox', icon: 'bell', subtitle: 'Site alerts & reports', route: '/(admin)/inbox' },
   { id: 'users', label: 'Users', icon: 'users', subtitle: 'Add workers & supervisors', route: '/(admin)/users' },
   { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Create & manage sites', route: '/(admin)/projects' },
   { id: 'reports', label: 'Hours & Reports', icon: 'bar-chart-2', subtitle: 'Attendance & payroll CSV', route: '/(admin)/reports' },
@@ -22,6 +26,13 @@ const ADMIN_MODULES: Array<{ id: string; label: string; icon: any; subtitle: str
 
 export default function AdminDashboard() {
   const { user, signOut } = useAuth();
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    const q = query(collection(db, 'notifications'), where('read', '==', false));
+    const unsub = onSnapshot(q, (snap) => setUnread(snap.size), () => setUnread(0));
+    return unsub;
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -45,6 +56,11 @@ export default function AdminDashboard() {
             >
               <View style={styles.iconWrap}>
                 <Feather name={m.icon as any} size={22} color={colors.primary} />
+                {m.id === 'inbox' && unread > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
+                  </View>
+                )}
               </View>
               <Text style={styles.cardLabel}>{m.label}</Text>
               <Text style={styles.cardSubtitle}>{m.subtitle}</Text>
@@ -95,6 +111,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: spacing.md,
   },
+  badge: {
+    position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18,
+    borderRadius: 9, backgroundColor: colors.danger,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+  },
+  badgeText: { color: colors.textInverse, fontSize: 10, fontWeight: typography.weights.bold },
   cardLabel: {
     fontSize: typography.sizes.md,
     fontWeight: typography.weights.semibold,
