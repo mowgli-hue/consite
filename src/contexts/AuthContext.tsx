@@ -14,6 +14,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { onAuthChange, fetchUserProfile, signIn as libSignIn, signOut as libSignOut } from '../lib/auth';
 import type { User } from '../types';
 
@@ -35,25 +37,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthChange(async (fbUser) => {
+    // Live-subscribe to the profile doc so changes made by the office
+    // (project assignments, deactivation, role changes) reach a logged-in
+    // app within seconds — no re-login needed.
+    let profileUnsub: (() => void) | null = null;
+
+    const unsub = onAuthChange((fbUser) => {
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
       if (!fbUser) {
         setUser(null);
         setReady(true);
         setLoading(false);
         return;
       }
-      try {
-        const profile = await fetchUserProfile(fbUser.uid);
-        setUser(profile);
-      } catch (err) {
-        console.warn('Failed to load user profile', err);
-        setUser(null);
-      } finally {
-        setReady(true);
-        setLoading(false);
-      }
+      profileUnsub = onSnapshot(
+        doc(db, 'users', fbUser.uid),
+        (snap) => {
+          setUser(snap.exists() ? ({ uid: snap.id, ...(snap.data() as Omit<User, 'uid'>) } as User) : null);
+          setReady(true);
+          setLoading(false);
+        },
+        (err) => {
+          console.warn('Failed to load user profile', err);
+          setUser(null);
+          setReady(true);
+          setLoading(false);
+        },
+      );
     });
-    return unsub;
+
+    return () => {
+      unsub();
+      if (profileUnsub) profileUnsub();
+    };
   }, []);
 
   const value = useMemo<AuthState>(
