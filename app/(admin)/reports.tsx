@@ -22,6 +22,7 @@ import type { Project, User } from '../../src/types';
 type Row = {
   id: string; uid: string; name: string;
   inMs: number; outMs?: number; hours?: number; open: boolean;
+  status?: string;
 };
 
 const RANGES = [
@@ -67,10 +68,11 @@ export default function AdminReports() {
         const inMs = tsToMs(a.clockInAt) ?? 0;
         const outMs = tsToMs(a.clockOutAt);
         return {
-          id: d.id, uid: a.uid, name: nameOf(a.uid),
+          id: d.id, uid: a.uid, name: a.displayName ?? nameOf(a.uid),
           inMs, outMs,
           hours: outMs ? (outMs - inMs) / 3_600_000 : undefined,
           open: !outMs,
+          status: a.status,
         };
       }));
     } catch (err: any) {
@@ -107,7 +109,8 @@ export default function AdminReports() {
         esc(r.name), esc(project?.name ?? ''),
         new Date(r.inMs).toLocaleDateString('en-CA'),
         new Date(r.inMs).toLocaleTimeString(), r.outMs ? new Date(r.outMs).toLocaleTimeString() : '',
-        r.hours?.toFixed(2) ?? '', r.open ? 'NO CLOCK-OUT — REVIEW' : 'complete',
+        r.hours?.toFixed(2) ?? '',
+        r.open ? 'NO CLOCK-OUT — REVIEW' : (r.status === 'approved' ? 'approved' : 'PENDING FOREMAN APPROVAL'),
       ].join(',')),
     ];
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -175,9 +178,16 @@ export default function AdminReports() {
                     {r.outMs ? ` → out ${new Date(r.outMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ' → still on the clock'}
                   </Text>
                 </View>
-                <Text style={[styles.entryHours, r.open && { color: colors.danger }]}>
-                  {r.hours ? `${r.hours.toFixed(1)}h` : 'OPEN'}
-                </Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.entryHours, r.open && { color: colors.danger }]}>
+                    {r.hours ? `${r.hours.toFixed(1)}h` : 'OPEN'}
+                  </Text>
+                  {!r.open && (
+                    <Text style={[styles.statusTag, r.status === 'approved' ? { color: colors.success } : { color: colors.warning }]}>
+                      {r.status === 'approved' ? '✓ approved' : 'pending'}
+                    </Text>
+                  )}
+                </View>
               </View>
             ))}
           </>
@@ -228,4 +238,5 @@ const styles = StyleSheet.create({
   entryName: { fontWeight: typography.weights.medium, color: colors.text },
   entrySub: { color: colors.textSecondary, fontSize: typography.sizes.sm, marginTop: 1 },
   entryHours: { fontWeight: typography.weights.bold, color: colors.text },
+  statusTag: { fontSize: typography.sizes.xs, marginTop: 2 },
 });

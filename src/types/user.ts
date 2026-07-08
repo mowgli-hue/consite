@@ -10,7 +10,14 @@
 
 export type UserRole = 'admin' | 'worker';
 
-export type ProjectMemberRole = 'worker' | 'supervisor';
+/**
+ * Per-project roles matching a real BC framing crew:
+ *   worker       — clocks in/out, does assigned work
+ *   foreman      — approves crew hours, owns the daily FLHA, assigns tasks
+ *   lead-foreman — foreman powers across the project + manages foremen
+ *   supervisor   — legacy alias (v0.1), treated as foreman
+ */
+export type ProjectMemberRole = 'worker' | 'foreman' | 'lead-foreman' | 'supervisor';
 
 /**
  * Permission strings follow `<scope>.<resource>.<action>` convention.

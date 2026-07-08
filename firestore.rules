@@ -100,10 +100,14 @@ service cloud.firestore {
         allow create: if isProjectMember(pid) &&
                          request.resource.data.uid == request.auth.uid;
 
-        // Update (clock out): self, supervisor, or admin
+        // Update: admin and approvers can do anything; foremen can clock out
+        // others; a worker can update their own shift but can never set
+        // status to 'approved' (no self-approval).
         allow update: if isAdmin() ||
-                         resource.data.uid == request.auth.uid ||
-                         hasProjectPerm(pid, 'supervisor.attendance.clockout-others');
+                         hasProjectPerm(pid, 'supervisor.attendance.approve') ||
+                         hasProjectPerm(pid, 'supervisor.attendance.clockout-others') ||
+                         (resource.data.uid == request.auth.uid &&
+                          request.resource.data.status != 'approved');
 
         allow delete: if isAdmin();
       }

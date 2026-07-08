@@ -97,7 +97,7 @@ export default function ClockScreen() {
 
     setSubmitting(true);
     try {
-      const result = await clockIn({ uid: user.uid, project });
+      const result = await clockIn({ uid: user.uid, displayName: user.displayName, project });
       const distance = result.gps?.distanceFromProjectM;
       // The site paperwork moment: clocked in → do today's FLHA now.
       confirm(

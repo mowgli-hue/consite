@@ -22,6 +22,34 @@ const DEFAULT_WORKER_PERMISSIONS = [
   'worker.media.upload',
 ];
 
+const FOREMAN_PERMISSIONS = [
+  ...DEFAULT_WORKER_PERMISSIONS,
+  'supervisor.attendance.approve',
+  'supervisor.attendance.clockout-others',
+  'supervisor.forms.approve',
+];
+
+export type MemberRole = 'worker' | 'foreman' | 'lead-foreman';
+
+export function permissionsForRole(role: MemberRole): string[] {
+  return role === 'worker' ? DEFAULT_WORKER_PERMISSIONS : FOREMAN_PERMISSIONS;
+}
+
+/** Change a member's per-project role (worker ↔ foreman ↔ lead-foreman). */
+export async function setMemberRole(uid: string, projectId: string, role: MemberRole) {
+  await setDoc(
+    doc(db, 'projects', projectId, 'members', uid),
+    { role, permissions: permissionsForRole(role) },
+    { merge: true },
+  );
+  const projRef = doc(db, 'projects', projectId);
+  if (role === 'worker') {
+    await updateDoc(projRef, { supervisorUids: arrayRemove(uid) });
+  } else {
+    await updateDoc(projRef, { supervisorUids: arrayUnion(uid) });
+  }
+}
+
 export async function listUsers(): Promise<User[]> {
   const snap = await getDocs(query(collection(db, 'users'), orderBy('displayName')));
   return snap.docs.map((d) => ({ uid: d.id, ...(d.data() as Omit<User, 'uid'>) }));

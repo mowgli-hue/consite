@@ -15,8 +15,10 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { notify, confirm } from '../../src/lib/notify';
 import {
   listUsers, listAllProjects, createWorkerAccount, setUserActive,
-  assignToProject, removeFromProject,
+  assignToProject, removeFromProject, setMemberRole, type MemberRole,
 } from '../../src/lib/adminUsers';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../src/lib/firebase';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { User, Project } from '../../src/types';
 
@@ -27,6 +29,42 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [memberRoles, setMemberRoles] = useState<Record<string, MemberRole>>({});
+
+  // When a user card expands, load their per-project roles.
+  useEffect(() => {
+    (async () => {
+      if (!expanded) return;
+      const u = users.find((x) => x.uid === expanded);
+      if (!u) return;
+      const updates: Record<string, MemberRole> = {};
+      for (const pid of u.projectIds ?? []) {
+        const m = await getDoc(doc(db, 'projects', pid, 'members', u.uid));
+        const r = (m.data()?.role ?? 'worker') as string;
+        updates[`${u.uid}:${pid}`] = (r === 'supervisor' ? 'foreman' : r) as MemberRole;
+      }
+      setMemberRoles((prev) => ({ ...prev, ...updates }));
+    })();
+  }, [expanded, users]);
+
+  const ROLE_LABELS: Record<MemberRole, string> = {
+    worker: 'Worker',
+    foreman: 'Foreman',
+    'lead-foreman': 'Lead Foreman',
+  };
+
+  async function cycleRole(u: User, projectId: string) {
+    const key = `${u.uid}:${projectId}`;
+    const current = memberRoles[key] ?? 'worker';
+    const next: MemberRole =
+      current === 'worker' ? 'foreman' : current === 'foreman' ? 'lead-foreman' : 'worker';
+    try {
+      await setMemberRole(u.uid, projectId, next);
+      setMemberRoles((prev) => ({ ...prev, [key]: next }));
+    } catch (err: any) {
+      notify('Role change failed', err.message);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,18 +160,36 @@ export default function AdminUsers() {
                         disabled={u.uid === me?.uid}
                       />
                     </View>
-                    <Text style={[styles.detailLabel, { marginTop: spacing.md }]}>Projects</Text>
+                    <Text style={[styles.detailLabel, { marginTop: spacing.md }]}>
+                      Projects — tap the role chip to promote
+                    </Text>
                     {projects.map((p) => {
                       const assigned = (u.projectIds ?? []).includes(p.id);
+                      const role = memberRoles[`${u.uid}:${p.id}`] ?? 'worker';
                       return (
-                        <Pressable key={p.id} style={styles.projRow} onPress={() => toggleProject(u, p)}>
-                          <Feather
-                            name={assigned ? 'check-square' : 'square'}
-                            size={18}
-                            color={assigned ? colors.primary : colors.textTertiary}
-                          />
-                          <Text style={styles.projName}>{p.name}</Text>
-                        </Pressable>
+                        <View key={p.id} style={styles.projRow}>
+                          <Pressable
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 }}
+                            onPress={() => toggleProject(u, p)}
+                          >
+                            <Feather
+                              name={assigned ? 'check-square' : 'square'}
+                              size={18}
+                              color={assigned ? colors.primary : colors.textTertiary}
+                            />
+                            <Text style={styles.projName}>{p.name}</Text>
+                          </Pressable>
+                          {assigned && (
+                            <Pressable
+                              style={[styles.roleChip, role !== 'worker' && styles.roleChipOn]}
+                              onPress={() => cycleRole(u, p.id)}
+                            >
+                              <Text style={[styles.roleChipText, role !== 'worker' && styles.roleChipTextOn]}>
+                                {ROLE_LABELS[role]}
+                              </Text>
+                            </Pressable>
+                          )}
+                        </View>
                       );
                     })}
                   </View>
@@ -244,6 +300,13 @@ const styles = StyleSheet.create({
   detailLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.textSecondary },
   projRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   projName: { color: colors.text, fontSize: typography.sizes.md },
+  roleChip: {
+    paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radii.lg,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background,
+  },
+  roleChipOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  roleChipText: { fontSize: typography.sizes.xs, color: colors.textSecondary },
+  roleChipTextOn: { color: colors.primary, fontWeight: typography.weights.semibold },
 
   formTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, color: colors.text, marginBottom: spacing.md },
   input: {

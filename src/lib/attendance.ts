@@ -4,8 +4,8 @@ import { db } from './firebase';
 import { checkGeofence } from './geofence';
 import type { Project, AttendanceRecord, ClockInValidationResult, AttendanceGps } from '../types';
 
-export async function clockIn(opts: { uid: string; project: Project; override?: { reason: string; approvedBy: string } }) {
-  const { uid, project, override } = opts;
+export async function clockIn(opts: { uid: string; displayName?: string; project: Project; override?: { reason: string; approvedBy: string } }) {
+  const { uid, displayName, project, override } = opts;
   if (!project.active) throw asError({ ok: false, reason: 'project_inactive', message: 'This project is not active.' });
 
   const openShift = await findOpenShift(uid, [project.id]);
@@ -24,7 +24,8 @@ export async function clockIn(opts: { uid: string; project: Project; override?: 
   }
 
   const ref = await addDoc(collection(db, 'projects', project.id, 'attendance'), {
-    uid, clockInAt: serverTimestamp(), clockOutAt: null, clockOutBy: null,
+    uid, displayName: displayName ?? null,
+    clockInAt: serverTimestamp(), clockOutAt: null, clockOutBy: null,
     clockInGps: gps ?? null, override: override ?? null,
   });
   return { id: ref.id, gps, validation: { ok: true, distanceM: gps?.distanceFromProjectM } };
@@ -35,6 +36,17 @@ export async function clockOut(opts: { projectId: string; recordId: string; acto
   await updateDoc(doc(db, 'projects', projectId, 'attendance', recordId), {
     clockOutAt: serverTimestamp(),
     clockOutBy: actorUid !== workerUid ? actorUid : null,
+    status: 'pending', // hours count for payroll only after foreman approval
+  });
+}
+
+export async function approveShift(opts: { projectId: string; recordId: string; approverUid: string }) {
+  const { projectId, recordId, approverUid } = opts;
+  await updateDoc(doc(db, 'projects', projectId, 'attendance', recordId), {
+    status: 'approved',
+    approvedBy: approverUid,
+    approvedAt: Date.now(),
+    needsReview: false,
   });
 }
 
