@@ -17,8 +17,8 @@ export { createWorker } from './admin';
 // Firestore triggers
 export { onAttendanceCreated, onSubmissionCreated } from './triggers';
 
-// SMS notifications (Twilio)
-export { onDeficiencyCreated, missedClockoutSweep } from './notifications';
+// Notifications (admin inbox + worker alerts)
+export { onDeficiencyCreated, missedClockoutSweep, onWorkerAssigned } from './notifications';
 
 // AI form-fill engine
 export {

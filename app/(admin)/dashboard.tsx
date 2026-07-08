@@ -144,7 +144,7 @@ function Section({ title, modules, unread, dim }: { title: string; modules: Modu
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scroll: { padding: spacing.lg, paddingBottom: spacing['3xl'], maxWidth: 720, width: '100%', alignSelf: 'center' },
+  scroll: { padding: spacing.lg, paddingBottom: spacing['3xl'], width: '100%' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -174,8 +174,10 @@ const styles = StyleSheet.create({
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   card: {
-    width: '48%',
+    // 2-up on phones, 3–5 columns full-width on desktop.
+    flexBasis: '48%',
     minWidth: 200,
+    maxWidth: 340,
     flexGrow: 1,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,

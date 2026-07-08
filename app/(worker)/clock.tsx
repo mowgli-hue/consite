@@ -16,8 +16,9 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
+import { router } from 'expo-router';
+import { notify, confirm } from '../../src/lib/notify';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -98,13 +99,17 @@ export default function ClockScreen() {
     try {
       const result = await clockIn({ uid: user.uid, project });
       const distance = result.gps?.distanceFromProjectM;
-      Alert.alert(
-        'Clocked in',
-        distance != null ? `You're ${distance}m from site center.` : 'Welcome to the site.',
+      // The site paperwork moment: clocked in → do today's FLHA now.
+      confirm(
+        'Clocked in ✓',
+        (distance != null ? `You're ${distance}m from site center. ` : '') +
+          'Complete your FLHA for today?',
+        () => router.push(`/forms/flha-daily-v1?projectId=${project.id}` as any),
+        'Start FLHA',
       );
       await load();
     } catch (err: any) {
-      Alert.alert('Cannot clock in', err.message ?? 'Please try again.');
+      notify('Cannot clock in', err.message ?? 'Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -120,10 +125,10 @@ export default function ClockScreen() {
         actorUid: user.uid,
         workerUid: openShift.uid,
       });
-      Alert.alert('Clocked out', 'See you next shift.');
+      notify('Clocked out', 'See you next shift.');
       await load();
     } catch (err: any) {
-      Alert.alert('Clock-out failed', err.message ?? 'Please try again.');
+      notify('Clock-out failed', err.message ?? 'Please try again.');
     } finally {
       setSubmitting(false);
     }

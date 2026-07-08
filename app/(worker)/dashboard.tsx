@@ -19,7 +19,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import {
+  collection, doc, getDocs, limit, onSnapshot, orderBy, query, updateDoc, where,
+} from 'firebase/firestore';
 
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
@@ -37,10 +39,32 @@ const DEFAULT_MODULES: DashboardModule[] = [
   { id: 'projects', label: 'Projects', icon: 'briefcase', route: '/projects', order: 8, visible: true, requiredPermissions: [] },
 ];
 
+type WorkerNotice = { id: string; title: string; body?: string };
+
 export default function WorkerDashboard() {
   const { user, signOut } = useAuth();
   const [modules, setModules] = useState<DashboardModule[]>(DEFAULT_MODULES);
   const [refreshing, setRefreshing] = useState(false);
+  const [notices, setNotices] = useState<WorkerNotice[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'users', user.uid, 'notifications'),
+      where('read', '==', false),
+      limit(3),
+    );
+    return onSnapshot(
+      q,
+      (snap) => setNotices(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))),
+      () => setNotices([]),
+    );
+  }, [user]);
+
+  async function dismissNotice(id: string) {
+    if (!user) return;
+    await updateDoc(doc(db, 'users', user.uid, 'notifications', id), { read: true });
+  }
 
   async function load() {
     try {
@@ -90,12 +114,31 @@ export default function WorkerDashboard() {
           </Pressable>
         </View>
 
+        {notices.map((n) => (
+          <View key={n.id} style={styles.notice}>
+            <Feather name="bell" size={16} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.noticeTitle}>{n.title}</Text>
+              {!!n.body && <Text style={styles.noticeBody}>{n.body}</Text>}
+            </View>
+            <Pressable hitSlop={8} onPress={() => dismissNotice(n.id)}>
+              <Feather name="x" size={16} color={colors.textTertiary} />
+            </Pressable>
+          </View>
+        ))}
+
         <View style={styles.grid}>
           {modules.map((m) => (
             <Pressable
               key={m.id}
               style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-              onPress={() => router.push(m.route as any)}
+              onPress={() => {
+                // Routes were seeded against the sample project — point them
+                // at the worker's real first assignment instead.
+                const pid = user?.projectIds?.[0];
+                const route = pid ? m.route.replace('sample-project-1', pid) : m.route;
+                router.push(route as any);
+              }}
             >
               <View style={[styles.iconWrap, { backgroundColor: m.color ?? colors.primarySoft }]}>
                 <Feather name={iconFor(m.icon)} size={22} color={m.color ? '#fff' : colors.primary} />
@@ -149,8 +192,25 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  noticeTitle: { color: colors.text, fontWeight: typography.weights.semibold, fontSize: typography.sizes.sm },
+  noticeBody: { color: colors.textSecondary, fontSize: typography.sizes.xs, marginTop: 1 },
   card: {
-    width: '48%',
+    // 2-up on phones, flows to 3–5 columns on desktop widths.
+    flexBasis: '48%',
+    flexGrow: 1,
+    maxWidth: 280,
+    minWidth: 150,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,

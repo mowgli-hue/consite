@@ -36,6 +36,32 @@ async function pushNotification(n: {
   });
 }
 
+/**
+ * Worker gets notified when assigned to a project.
+ * Written to users/{uid}/notifications — shown as a banner in the app.
+ * WhatsApp/SMS channel plugs in here once a WhatsApp Business number
+ * is approved (send inside this function, same payload).
+ */
+export const onWorkerAssigned = onDocumentCreated(
+  'projects/{projectId}/members/{uid}',
+  async (event) => {
+    const db = getFirestore();
+    const projSnap = await db.collection('projects').doc(event.params.projectId).get();
+    const p = projSnap.data();
+    if (!p) return;
+
+    await db.collection('users').doc(event.params.uid).collection('notifications').add({
+      type: 'project-assigned',
+      title: `New site: ${p.name}`,
+      body: `${p.address ?? ''}${p.geofenceEnabled ? ' · GPS clock-in enabled' : ''}`.trim(),
+      projectId: event.params.projectId,
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    logger.info(`Worker ${event.params.uid} notified: assigned to ${p.name}`);
+  },
+);
+
 export const onDeficiencyCreated = onDocumentCreated(
   'projects/{projectId}/deficiencies/{defId}',
   async (event) => {

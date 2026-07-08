@@ -151,6 +151,13 @@ service cloud.firestore {
       allow create, update, delete: if isMe(uid) || isAdmin();
     }
 
+    // Worker notifications — written by Cloud Functions; worker reads own,
+    // marks own as read.
+    match /users/{uid}/notifications/{nid} {
+      allow read, update: if isMe(uid) || isAdmin();
+      allow create, delete: if isAdmin();
+    }
+
     // ─────────────────────────────────────────────────────
     // Form schemas — read by anyone signed in, write by admin.
     // ─────────────────────────────────────────────────────
