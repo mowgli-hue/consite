@@ -19,6 +19,7 @@ import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 type Module = { id: string; label: string; icon: any; subtitle: string; route?: string };
 
 const TODAY_MODULES: Module[] = [
+  { id: 'search', label: 'Search', icon: 'search', subtitle: 'Ask your project anything', route: '/(admin)/search' },
   { id: 'inbox', label: 'Inbox', icon: 'bell', subtitle: 'Site alerts & reports', route: '/(admin)/inbox' },
   { id: 'timeline', label: 'Site Timeline', icon: 'image', subtitle: 'Live work updates & photos', route: '/(admin)/timeline' },
   { id: 'reports', label: 'Hours & Reports', icon: 'bar-chart-2', subtitle: 'Attendance & payroll CSV', route: '/(admin)/reports' },

@@ -5,6 +5,7 @@ import { SideNav, type NavItem } from '../../src/components/SideNav';
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', icon: 'grid', route: '/dashboard' },
+  { label: 'Search', icon: 'search', route: '/search' },
   { label: 'Inbox', icon: 'bell', route: '/inbox' },
   { label: 'Site Timeline', icon: 'image', route: '/timeline' },
   { label: 'Hours & Reports', icon: 'bar-chart-2', route: '/reports' },

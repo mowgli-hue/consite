@@ -38,6 +38,7 @@ import {
   DAILY_LOG_SYSTEM_PROMPT,
   WORKLOG_SYSTEM_PROMPT,
   SCAN_SYSTEM_PROMPT,
+  ASK_PROJECT_SYSTEM_PROMPT,
 } from './ai-prompts';
 import { buildContext } from './context';
 import type { FormSchema, FormValues } from './shared-types';
@@ -233,6 +234,45 @@ export const aiAnalyzeDeficiency = onCall<AnalyzeDeficiencyRequest, Promise<Anal
     const parsed = parseJsonResponse<AnalyzeDeficiencyResponse>(extractText(resp));
     if (!parsed) throw new HttpsError('internal', 'AI response was not valid JSON.');
     return parsed;
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// aiAskProject — answer a question from project-history snippets
+// ─────────────────────────────────────────────────────────────────────────
+
+interface AskProjectRequest {
+  question: string;
+  projectName: string;
+  snippets: Array<{ type: string; date: string; by?: string; text: string }>;
+}
+
+export const aiAskProject = onCall<AskProjectRequest, Promise<{ answer: string }>>(
+  { secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 30 },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const { question, projectName, snippets } = request.data;
+    if (!question || !snippets?.length) {
+      throw new HttpsError('invalid-argument', 'question and snippets required.');
+    }
+
+    const history = snippets.slice(0, 60).map((s) =>
+      `[${s.date}] (${s.type}${s.by ? ` · ${s.by}` : ''}) ${s.text}`,
+    ).join('\n');
+
+    const resp = await getClient().messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: 600,
+      system: ASK_PROJECT_SYSTEM_PROMPT,
+      messages: [{
+        role: 'user',
+        content: `Project: ${projectName}\n\nHistory snippets:\n${history}\n\nQuestion: ${question}`,
+      }],
+    });
+
+    return { answer: extractText(resp).trim() };
   }
 );
 

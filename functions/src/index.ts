@@ -34,5 +34,6 @@ export {
   aiAnalyzeReceipt,
   aiAnalyzeWork,
   aiScanPhoto,
+  aiAskProject,
   aiGenerateDailyLog,
 } from './ai-fill';
