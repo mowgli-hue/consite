@@ -14,10 +14,72 @@
 
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { defineSecret } from 'firebase-functions/params';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 
 type NotificationType = 'deficiency' | 'missed-clockout' | 'system';
+
+// ── WhatsApp channel (Meta Cloud API) ─────────────────────────────
+// Set both secrets to "disabled" until the Meta setup is done — the
+// channel then no-ops and workers still get in-app notifications.
+//   WHATSAPP_ACCESS_TOKEN    — permanent token from Meta Business
+//   WHATSAPP_PHONE_NUMBER_ID — the sender number's ID from WhatsApp Manager
+const WHATSAPP_ACCESS_TOKEN = defineSecret('WHATSAPP_ACCESS_TOKEN');
+const WHATSAPP_PHONE_NUMBER_ID = defineSecret('WHATSAPP_PHONE_NUMBER_ID');
+export const WHATSAPP_SECRETS = [WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID];
+
+function whatsappEnabled(): boolean {
+  try {
+    const t = WHATSAPP_ACCESS_TOKEN.value();
+    const p = WHATSAPP_PHONE_NUMBER_ID.value();
+    return !!t && !!p && t !== 'disabled' && p !== 'disabled';
+  } catch { return false; }
+}
+
+/** E.164 without the + is what Meta wants: "+1 (604) 555-1234" → "16045551234". */
+function waNumber(phone: unknown): string | null {
+  if (typeof phone !== 'string') return null;
+  const digits = phone.replace(/\D/g, '');
+  return digits.length >= 10 ? (digits.length === 10 ? `1${digits}` : digits) : null;
+}
+
+/**
+ * Send a WhatsApp message. Tries the approved template `consite_update`
+ * (one body parameter) first — required for business-initiated messages —
+ * then falls back to free text (works inside a 24h service window).
+ */
+async function sendWhatsApp(phone: unknown, text: string): Promise<void> {
+  if (!whatsappEnabled()) return;
+  const to = waNumber(phone);
+  if (!to) return;
+
+  const url = `https://graph.facebook.com/v20.0/${WHATSAPP_PHONE_NUMBER_ID.value()}/messages`;
+  const headers = {
+    Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN.value()}`,
+    'Content-Type': 'application/json',
+  };
+
+  const tpl = await fetch(url, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      messaging_product: 'whatsapp', to, type: 'template',
+      template: {
+        name: 'consite_update',
+        language: { code: 'en' },
+        components: [{ type: 'body', parameters: [{ type: 'text', text: text.slice(0, 500) }] }],
+      },
+    }),
+  });
+  if (tpl.ok) { logger.info(`WhatsApp template sent to …${to.slice(-4)}`); return; }
+
+  const free = await fetch(url, {
+    method: 'POST', headers,
+    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: text.slice(0, 900) } }),
+  });
+  if (free.ok) logger.info(`WhatsApp text sent to …${to.slice(-4)}`);
+  else logger.warn(`WhatsApp failed (${tpl.status}/${free.status}): ${await free.text()}`);
+}
 
 async function pushNotification(n: {
   type: NotificationType;
@@ -43,7 +105,7 @@ async function pushNotification(n: {
  * is approved (send inside this function, same payload).
  */
 export const onWorkerAssigned = onDocumentCreated(
-  'projects/{projectId}/members/{uid}',
+  { document: 'projects/{projectId}/members/{uid}', secrets: WHATSAPP_SECRETS },
   async (event) => {
     const db = getFirestore();
     const projSnap = await db.collection('projects').doc(event.params.projectId).get();
@@ -58,13 +120,20 @@ export const onWorkerAssigned = onDocumentCreated(
       read: false,
       createdAt: FieldValue.serverTimestamp(),
     });
+
+    // WhatsApp (if channel enabled and worker has a phone on file)
+    const userSnap = await db.collection('users').doc(event.params.uid).get();
+    await sendWhatsApp(
+      userSnap.data()?.phone,
+      `You've been added to a new site: ${p.name}${p.address ? ` — ${p.address}` : ''}. Open Consite to clock in and see details.`,
+    );
     logger.info(`Worker ${event.params.uid} notified: assigned to ${p.name}`);
   },
 );
 
 /** Worker gets an in-app notification when a pin-task is assigned to them. */
 export const onPinAssigned = onDocumentCreated(
-  'projects/{projectId}/plans/{planId}/pins/{pinId}',
+  { document: 'projects/{projectId}/plans/{planId}/pins/{pinId}', secrets: WHATSAPP_SECRETS },
   async (event) => {
     const data = event.data?.data();
     if (!data?.assigneeUid) return;
@@ -79,6 +148,12 @@ export const onPinAssigned = onDocumentCreated(
       read: false,
       createdAt: FieldValue.serverTimestamp(),
     });
+
+    const userSnap = await db.collection('users').doc(String(data.assigneeUid)).get();
+    await sendWhatsApp(
+      userSnap.data()?.phone,
+      `${data.type === 'issue' ? 'Issue assigned to you' : 'New task for you'} at ${projSnap.data()?.name ?? 'the site'}: ${String(data.instruction ?? '').slice(0, 200)}. Open Consite → My Tasks.`,
+    );
     logger.info(`Pin task notification → ${data.assigneeUid}`);
   },
 );
