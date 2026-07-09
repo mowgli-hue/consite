@@ -91,7 +91,13 @@ export const onSubmissionRecord = onDocumentCreated(
         if (type === 'signature' && typeof v === 'string') {
           doc.fontSize(9).font('Helvetica-Bold').text(label + ':');
           try {
-            const [bytes] = await bucket.file(v).download();
+            let bytes: Buffer;
+            if (v.startsWith('data:image')) {
+              // v0.1 contract: signature stored inline as a base64 data URL
+              bytes = Buffer.from(v.split(',')[1] ?? '', 'base64');
+            } else {
+              [bytes] = (await bucket.file(v).download()) as unknown as [Buffer];
+            }
             doc.image(bytes, { fit: [180, 60] });
           } catch {
             doc.fontSize(9).font('Helvetica-Oblique').text('  [signed — image unavailable]');
