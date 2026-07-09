@@ -37,6 +37,7 @@ export default function DrawingScreen() {
   const [isForeman, setIsForeman] = useState(false);
   const [members, setMembers] = useState<Array<{ uid: string; name: string }>>([]);
   const [imgBox, setImgBox] = useState({ w: 0, h: 0 });
+  const [aspect, setAspect] = useState(0.8);
 
   // New-pin flow
   const [newPin, setNewPin] = useState<{ x: number; y: number } | null>(null);
@@ -59,7 +60,12 @@ export default function DrawingScreen() {
         ]);
         setPlanName(plan.data()?.name ?? 'Drawing');
         const p = plan.data();
-        if (p?.storagePath) setImageUrl(await getDownloadURL(ref(storage, p.storagePath)));
+        if (p?.storagePath) {
+          const url = await getDownloadURL(ref(storage, p.storagePath));
+          setImageUrl(url);
+          // Render the drawing at its true proportions so pins line up.
+          Image.getSize(url, (w, h) => { if (w > 0 && h > 0) setAspect(w / h); }, () => {});
+        }
         const role = member.data()?.role;
         setIsForeman(user.role === 'admin' || ['foreman', 'lead-foreman', 'supervisor'].includes(role));
       } catch (err: any) { notify('Could not load drawing', err.message); }
@@ -183,7 +189,7 @@ export default function DrawingScreen() {
           <Pressable
             onPress={onImagePress}
             onLayout={(e) => setImgBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
-            style={styles.imageWrap}
+            style={[styles.imageWrap, { aspectRatio: aspect }]}
           >
             <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="contain" />
             {imgBox.w > 0 && pins.map((p) => (
@@ -332,7 +338,7 @@ const styles = StyleSheet.create({
   hint: { textAlign: 'center', color: colors.textSecondary, fontSize: typography.sizes.xs, paddingVertical: spacing.sm },
   scroll: { padding: spacing.md, paddingBottom: spacing['3xl'] },
 
-  imageWrap: { width: '100%', aspectRatio: 0.8, backgroundColor: '#fff', borderRadius: radii.md, overflow: 'hidden' },
+  imageWrap: { width: '100%', backgroundColor: '#fff', borderRadius: radii.md, overflow: 'hidden' },
   image: { width: '100%', height: '100%' },
   pin: { position: 'absolute' },
 

@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Modal, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -23,11 +23,17 @@ import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 type PlanRow = { id: string; name: string; openPins: number };
 
 export default function DrawingsScreen() {
-  const { projectId } = useLocalSearchParams<{ projectId: string }>();
+  const { projectId: projectIdParam } = useLocalSearchParams<{ projectId: string }>();
   const { user } = useAuth();
+  // Sidebar opens this without params — default to the worker's first site.
+  const projectId = projectIdParam && projectIdParam !== 'sample-project-1'
+    ? projectIdParam
+    : user?.projectIds?.[0] ?? projectIdParam;
   const [plans, setPlans] = useState<PlanRow[] | null>(null);
   const [isForeman, setIsForeman] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pendingB64, setPendingB64] = useState<string | null>(null);
+  const [drawingName, setDrawingName] = useState('');
 
   const load = useCallback(async () => {
     if (!projectId || !user) return;
@@ -65,12 +71,28 @@ export default function DrawingsScreen() {
       ? await ImagePicker.launchCameraAsync({ quality: 0.8 })
       : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (result.canceled || !result.assets[0]) return;
-    setUploading(true);
     try {
       const b64 = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      // Ask for a proper name before anything uploads — "Drawing 2026-07-09"
+      // helps nobody find the 2nd-floor framing plan later.
+      setPendingB64(b64);
+      setDrawingName('');
+    } catch (err: any) {
+      notify('Photo error', err.message);
+    }
+  }
+
+  async function confirmUpload() {
+    if (!pendingB64 || !projectId || !user) return;
+    if (!drawingName.trim()) {
+      notify('Name the drawing', 'e.g. "Building B — 2nd floor framing plan"');
+      return;
+    }
+    setUploading(true);
+    try {
       const planRef = await addDoc(collection(db, 'projects', projectId, 'plans'), {
         projectId,
-        name: `Drawing ${new Date().toLocaleDateString('en-CA')}`,
+        name: drawingName.trim(),
         storagePath: null,
         fileType: 'image',
         version: 1,
@@ -78,8 +100,9 @@ export default function DrawingsScreen() {
         uploadedAt: Date.now(),
       });
       const storagePath = `projects/${projectId}/plans/${planRef.id}/drawing.jpg`;
-      await uploadString(ref(storage, storagePath), b64, 'base64', { contentType: 'image/jpeg' });
+      await uploadString(ref(storage, storagePath), pendingB64, 'base64', { contentType: 'image/jpeg' });
       await updateDoc(planRef, { storagePath });
+      setPendingB64(null);
       await load();
       router.push(`/drawing?projectId=${projectId}&planId=${planRef.id}` as any);
     } catch (err: any) {
@@ -148,6 +171,32 @@ export default function DrawingsScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* Name-the-drawing modal — shown after photo/pick, before upload */}
+      <Modal visible={!!pendingB64} animationType="slide" transparent onRequestClose={() => setPendingB64(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Name this drawing</Text>
+            <Text style={styles.modalSub}>So the crew can find it — building, floor, what it shows.</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder='e.g. "Building B — 2nd floor framing plan"'
+              placeholderTextColor={colors.textTertiary}
+              value={drawingName}
+              onChangeText={setDrawingName}
+              autoFocus
+            />
+            <View style={styles.modalBtns}>
+              <Pressable style={styles.cancelBtn} onPress={() => setPendingB64(null)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.saveBtn, uploading && { opacity: 0.5 }]} disabled={uploading} onPress={confirmUpload}>
+                {uploading ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.saveText}>Upload</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -188,4 +237,21 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', padding: spacing['3xl'], gap: spacing.sm },
   emptyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, color: colors.text },
   emptySub: { color: colors.textSecondary, textAlign: 'center' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: colors.surface, borderTopLeftRadius: radii.lg, borderTopRightRadius: radii.lg,
+    padding: spacing.xl, gap: spacing.sm,
+  },
+  modalTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, color: colors.text },
+  modalSub: { color: colors.textSecondary, fontSize: typography.sizes.sm },
+  modalInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.md,
+    color: colors.text, backgroundColor: colors.background, marginTop: spacing.sm,
+  },
+  modalBtns: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
+  saveBtn: { flex: 1, backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
+  saveText: { color: colors.textInverse, fontWeight: typography.weights.semibold },
+  cancelBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingVertical: spacing.md, alignItems: 'center' },
+  cancelText: { color: colors.textSecondary, fontWeight: typography.weights.medium },
 });

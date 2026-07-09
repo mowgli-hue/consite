@@ -26,8 +26,12 @@ import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 type Phase = 'capture' | 'voice' | 'analyzing' | 'review' | 'submitting' | 'done';
 
 export default function WorkLogScreen() {
-  const { projectId } = useLocalSearchParams<{ projectId: string }>();
+  const { projectId: projectIdParam } = useLocalSearchParams<{ projectId: string }>();
   const { user } = useAuth();
+  // Sidebar opens this without params — default to the worker's first site.
+  const projectId = projectIdParam && projectIdParam !== 'sample-project-1'
+    ? projectIdParam
+    : user?.projectIds?.[0] ?? projectIdParam;
 
   const [phase, setPhase] = useState<Phase>('capture');
   const [imageUri, setImageUri] = useState<string | null>(null);
