@@ -11,8 +11,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { collection, getDocs, orderBy, query, where, Timestamp } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { getDownloadURL, ref } from 'firebase/storage';
+import { Linking } from 'react-native';
 
-import { db } from '../../src/lib/firebase';
+import { db, functions, storage } from '../../src/lib/firebase';
 import { notify } from '../../src/lib/notify';
 import { listUsers, listAllProjects } from '../../src/lib/adminUsers';
 import { tsToMs } from '../../src/lib/attendance';
@@ -38,6 +41,24 @@ export default function AdminReports() {
   const [rangeDays, setRangeDays] = useState<number>(7);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [packBusy, setPackBusy] = useState(false);
+
+  async function exportAuditPack() {
+    if (!projectId) return;
+    setPackBusy(true);
+    try {
+      const fn = httpsCallable<{ projectId: string; fromMs: number; toMs: number }, { storagePath: string; records: number }>(functions, 'generateAuditPack');
+      const res = await fn({ projectId, fromMs: Date.now() - rangeDays * 86_400_000, toMs: Date.now() });
+      const url = await getDownloadURL(ref(storage, res.data.storagePath));
+      notify('Audit pack ready', `${res.data.records} signed record${res.data.records === 1 ? '' : 's'} merged.`);
+      if (typeof window !== 'undefined') window.open(url, '_blank');
+      else Linking.openURL(url);
+    } catch (err: any) {
+      notify('Audit pack failed', err.message);
+    } finally {
+      setPackBusy(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -152,6 +173,21 @@ export default function AdminReports() {
           ))}
         </View>
 
+        <Pressable
+          style={[styles.auditBtn, packBusy && { opacity: 0.6 }]}
+          disabled={packBusy || !projectId}
+          onPress={exportAuditPack}
+        >
+          {packBusy ? (
+            <ActivityIndicator color={colors.textInverse} size="small" />
+          ) : (
+            <Feather name="folder" size={16} color={colors.textInverse} />
+          )}
+          <Text style={styles.auditBtnText}>
+            {packBusy ? 'Building audit pack…' : `Audit pack — all signed records, last ${rangeDays} days`}
+          </Text>
+        </Pressable>
+
         {loading ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
         ) : (
@@ -220,6 +256,11 @@ const styles = StyleSheet.create({
   chipTextOn: { color: colors.primary, fontWeight: typography.weights.semibold },
 
   emptyText: { color: colors.textTertiary, marginTop: spacing.sm },
+  auditBtn: {
+    marginTop: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.sm, backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: spacing.md,
+  },
+  auditBtnText: { color: colors.textInverse, fontWeight: typography.weights.semibold, fontSize: typography.sizes.sm },
   totalRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,

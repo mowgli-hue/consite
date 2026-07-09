@@ -55,6 +55,12 @@ service firebase.storage {
                    && request.resource.size < 2 * 1024 * 1024;    // 2 MB cap
     }
 
+    // Audit packs — office reads; written server-side only
+    match /projects/{pid}/audit/{filename} {
+      allow read: if isSignedIn() && userRole() in ['admin', 'manager'];
+      allow write: if false;
+    }
+
     // ──────────────────────────────────────────────
     // Global templates — admin-managed
     // ──────────────────────────────────────────────

@@ -23,6 +23,9 @@ export { onDeficiencyCreated, missedClockoutSweep, onWorkerAssigned, onPinAssign
 // Records pipeline (submission → PDF → email; End-of-Day update re-sends)
 export { onSubmissionRecord, onSubmissionEndOfDay } from './records';
 
+// Audit pack (date range → merged PDF of all records)
+export { generateAuditPack } from './audit';
+
 // AI form-fill engine
 export {
   aiFillForm,
