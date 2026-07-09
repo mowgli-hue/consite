@@ -23,6 +23,12 @@ service cloud.firestore {
       return isSignedIn() && userRole() == 'admin';
     }
 
+    // Manager: reads everything, writes nothing. Use isStaff() in READ
+    // positions only — never in write positions.
+    function isStaff() {
+      return isSignedIn() && (userRole() == 'admin' || userRole() == 'manager');
+    }
+
     function isProjectMember(pid) {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/projects/$(pid)/members/$(request.auth.uid));
@@ -41,7 +47,7 @@ service cloud.firestore {
     // ─────────────────────────────────────────────────────
 
     match /users/{uid} {
-      allow read: if isMe(uid) || isAdmin();
+      allow read: if isMe(uid) || isStaff();
       allow create, delete: if isAdmin();
       // Workers may edit their own profile details but can never touch
       // role, active status, or project assignments.
@@ -57,18 +63,18 @@ service cloud.firestore {
     // ─────────────────────────────────────────────────────
 
     match /projects/{pid} {
-      allow read: if isAdmin() || isProjectMember(pid);
+      allow read: if isStaff() || isProjectMember(pid);
       allow create, update, delete: if isAdmin();
 
       // Members — admins manage
       match /members/{uid} {
-        allow read: if isMe(uid) || isAdmin() || isProjectMember(pid);
+        allow read: if isMe(uid) || isStaff() || isProjectMember(pid);
         allow write: if isAdmin();
       }
 
       // Plans — view requires project access; foremen and admin upload.
       match /plans/{planId} {
-        allow read: if isProjectMember(pid) || isAdmin();
+        allow read: if isProjectMember(pid) || isStaff();
         allow create, update: if isAdmin() ||
                                  hasProjectPerm(pid, 'supervisor.forms.approve');
         allow delete: if isAdmin();
@@ -76,7 +82,7 @@ service cloud.firestore {
         // Pin-tasks on the drawing: foremen create/assign; the assigned
         // worker can mark their own pin done; foremen/admin accept.
         match /pins/{pinId} {
-          allow read: if isProjectMember(pid) || isAdmin();
+          allow read: if isProjectMember(pid) || isStaff();
           allow create: if isAdmin() ||
                            hasProjectPerm(pid, 'supervisor.forms.approve');
           allow update: if isAdmin() ||
@@ -89,7 +95,7 @@ service cloud.firestore {
 
       // Media — workers w/ upload perm can create; only the uploader or admin can delete
       match /media/{mediaId} {
-        allow read: if isProjectMember(pid) || isAdmin();
+        allow read: if isProjectMember(pid) || isStaff();
         allow create: if hasProjectPerm(pid, 'worker.media.upload') &&
                          request.resource.data.uploadedBy == request.auth.uid;
         allow update: if isAdmin();
@@ -100,7 +106,7 @@ service cloud.firestore {
       // Submissions — workers with submit perm can create their own;
       // only admins and supervisors with approve perm can read others'.
       match /submissions/{subId} {
-        allow read: if isAdmin() ||
+        allow read: if isStaff() ||
                        (isProjectMember(pid) && (
                          resource.data.submittedBy == request.auth.uid ||
                          hasProjectPerm(pid, 'supervisor.forms.approve')
@@ -120,7 +126,7 @@ service cloud.firestore {
 
       // Attendance — workers see their own; supervisors see project-wide
       match /attendance/{attId} {
-        allow read: if isAdmin() ||
+        allow read: if isStaff() ||
                        resource.data.uid == request.auth.uid ||
                        hasProjectPerm(pid, 'supervisor.attendance.clockout-others');
 
@@ -142,7 +148,7 @@ service cloud.firestore {
 
       // Work log — members post their own entries; foremen/admin can amend.
       match /workLog/{entryId} {
-        allow read: if isAdmin() || isProjectMember(pid);
+        allow read: if isStaff() || isProjectMember(pid);
         allow create: if isProjectMember(pid) &&
                          request.resource.data.uid == request.auth.uid;
         allow update: if isAdmin() ||
@@ -154,7 +160,7 @@ service cloud.firestore {
       // Deficiencies (punch list) — any project member can report; admins
       // and supervisors can update status/resolve.
       match /deficiencies/{defId} {
-        allow read: if isAdmin() || isProjectMember(pid);
+        allow read: if isStaff() || isProjectMember(pid);
         allow create: if isProjectMember(pid) &&
                          request.resource.data.reportedBy == request.auth.uid;
         allow update: if isAdmin() ||
@@ -166,7 +172,7 @@ service cloud.firestore {
       // Expenses (job costing from receipts) — project members can record;
       // admins manage. Supervisor can approve in v0.3.
       match /expenses/{expId} {
-        allow read: if isAdmin() || isProjectMember(pid);
+        allow read: if isStaff() || isProjectMember(pid);
         allow create: if isProjectMember(pid) &&
                          request.resource.data.recordedBy == request.auth.uid;
         allow update: if isAdmin() ||
@@ -177,7 +183,7 @@ service cloud.firestore {
       // Daily logs — one per date. Supervisors and admins write; project
       // members can read.
       match /dailyLogs/{date} {
-        allow read: if isAdmin() || isProjectMember(pid);
+        allow read: if isStaff() || isProjectMember(pid);
         allow create, update: if isAdmin() ||
                                   hasProjectPerm(pid, 'supervisor.forms.approve') ||
                                   isProjectMember(pid); // any member for v0.2; v0.3 restricts
@@ -190,14 +196,14 @@ service cloud.firestore {
     // ─────────────────────────────────────────────────────
 
     match /users/{uid}/certifications/{certId} {
-      allow read: if isMe(uid) || isAdmin();
+      allow read: if isMe(uid) || isStaff();
       allow create, update, delete: if isMe(uid) || isAdmin();
     }
 
     // Worker notifications — written by Cloud Functions; worker reads own,
     // marks own as read.
     match /users/{uid}/notifications/{nid} {
-      allow read, update: if isMe(uid) || isAdmin();
+      allow read, update: if isMe(uid) || isStaff();
       allow create, delete: if isAdmin();
     }
 
@@ -234,8 +240,8 @@ service cloud.firestore {
     // ─────────────────────────────────────────────────────
 
     match /notifications/{nid} {
-      allow read, update, delete: if isAdmin();
-      allow create: if isAdmin();
+      allow read, update: if isStaff(); // manager reads inbox + marks read
+      allow create, delete: if isAdmin();
     }
   }
 }

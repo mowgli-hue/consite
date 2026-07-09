@@ -8,7 +8,8 @@
  * Top-level roles: admin OR worker. Supervisor is a per-project elevation.
  */
 
-export type UserRole = 'admin' | 'worker';
+/** manager = sees everything on their projects, changes nothing. */
+export type UserRole = 'admin' | 'manager' | 'worker';
 
 /**
  * Per-project roles matching a real BC framing crew:

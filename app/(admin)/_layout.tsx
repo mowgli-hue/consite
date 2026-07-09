@@ -17,7 +17,7 @@ export default function AdminLayout() {
   const { ready, user } = useAuth();
   if (!ready) return null;
   if (!user) return <Redirect href="/(auth)/login" />;
-  if (user.role !== 'admin') return <Redirect href="/(worker)/dashboard" />;
+  if (user.role !== 'admin' && user.role !== 'manager') return <Redirect href="/(worker)/dashboard" />;
 
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>

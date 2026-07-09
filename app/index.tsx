@@ -20,7 +20,7 @@ export default function Index() {
     if (!ready) return;
     if (!user) {
       router.replace('/(auth)/login');
-    } else if (user.role === 'admin') {
+    } else if (user.role === 'admin' || user.role === 'manager') {
       router.replace('/(admin)/dashboard');
     } else {
       router.replace('/(worker)/dashboard');

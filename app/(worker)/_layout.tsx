@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'My Hours', icon: 'calendar', route: '/timesheet' },
   { label: 'Crew Hours', icon: 'users', route: '/crew' },
   { label: 'Site Drawings', icon: 'map', route: '/drawings' },
+  { label: 'Forms', icon: 'check-square', route: '/forms' },
   { label: 'Punch List', icon: 'alert-triangle', route: '/punch-list' },
   { label: 'Projects', icon: 'briefcase', route: '/projects' },
   { label: 'My Tickets', icon: 'shield', route: '/certifications' },
@@ -66,6 +67,7 @@ export default function WorkerLayout() {
           <Tabs.Screen name="projects/index" options={{ href: null }} />
           <Tabs.Screen name="projects/[id]" options={{ href: null }} />
           <Tabs.Screen name="forms/[formId]" options={{ href: null }} />
+          <Tabs.Screen name="forms/index" options={{ href: null }} />
           <Tabs.Screen name="daily-log" options={{ href: null }} />
           <Tabs.Screen name="deficiency" options={{ href: null }} />
           <Tabs.Screen name="receipt" options={{ href: null }} />

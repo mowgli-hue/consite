@@ -65,7 +65,7 @@ export async function createWorkerAccount(data: {
   password: string;
   displayName: string;
   phone?: string;
-  role?: 'worker' | 'admin';
+  role?: 'worker' | 'manager' | 'admin';
   projectIds?: string[];
 }): Promise<string> {
   const fn = httpsCallable<typeof data, { uid: string }>(functions, 'createWorker');

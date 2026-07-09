@@ -17,7 +17,7 @@ interface CreateWorkerData {
   password: string;
   displayName: string;
   phone?: string;
-  role?: 'worker' | 'admin';
+  role?: 'worker' | 'manager' | 'admin';
   projectIds?: string[];
 }
 

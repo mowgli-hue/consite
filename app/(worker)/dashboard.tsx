@@ -39,6 +39,7 @@ const DEFAULT_MODULES: DashboardModule[] = [
   { id: 'deficiency', label: 'Report Issue', icon: 'image', route: '/deficiency?projectId=sample-project-1', order: 3, visible: true, requiredPermissions: [], subtitle: 'Photo + voice' },
   { id: 'receipt', label: 'Scan Receipt', icon: 'file-text', route: '/receipt?projectId=sample-project-1', order: 4, visible: true, requiredPermissions: [], subtitle: 'To job cost' },
   { id: 'daily-log', label: 'Daily Log', icon: 'clipboard', route: '/daily-log?projectId=sample-project-1', order: 5, visible: true, requiredPermissions: [], subtitle: 'AI-written' },
+  { id: 'forms-browser', label: 'Forms', icon: 'clipboard', route: '/forms', order: 5, visible: true, requiredPermissions: [], subtitle: 'QC, environmental & more' },
   { id: 'punch-list', label: 'Punch List', icon: 'bar-chart', route: '/punch-list?projectId=sample-project-1', order: 6, visible: true, requiredPermissions: [], subtitle: 'Open issues' },
   { id: 'certs', label: 'My Tickets', icon: 'shield', route: '/certifications', order: 7, visible: true, requiredPermissions: [], subtitle: 'WHMIS, fall arrest' },
   { id: 'projects', label: 'Projects', icon: 'briefcase', route: '/projects', order: 8, visible: true, requiredPermissions: [] },

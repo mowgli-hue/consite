@@ -109,9 +109,13 @@ export default function AdminUsers() {
           <Feather name="arrow-left" size={22} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Users</Text>
-        <Pressable hitSlop={8} onPress={() => setShowCreate((v) => !v)}>
-          <Feather name={showCreate ? 'x' : 'user-plus'} size={22} color={colors.primary} />
-        </Pressable>
+        {me?.role === 'admin' ? (
+          <Pressable hitSlop={8} onPress={() => setShowCreate((v) => !v)}>
+            <Feather name={showCreate ? 'x' : 'user-plus'} size={22} color={colors.primary} />
+          </Pressable>
+        ) : (
+          <View style={{ width: 22 }} />
+        )}
       </View>
 
       {loading ? (
@@ -135,7 +139,7 @@ export default function AdminUsers() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.name}>
-                      {u.displayName} {u.role === 'admin' && <Text style={styles.adminBadge}> ADMIN</Text>}
+                      {u.displayName} {u.role !== 'worker' && <Text style={styles.adminBadge}> {u.role.toUpperCase()}</Text>}
                     </Text>
                     <Text style={styles.sub}>{u.email}{u.phone ? ` · ${u.phone}` : ''}</Text>
                     <Text style={styles.sub}>
@@ -209,7 +213,7 @@ function CreateWorkerCard({ projects, onDone }: { projects: Project[]; onDone: (
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [projectIds, setProjectIds] = useState<string[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<'worker' | 'manager' | 'admin'>('worker');
   const [busy, setBusy] = useState(false);
 
   async function submit() {
@@ -224,7 +228,7 @@ function CreateWorkerCard({ projects, onDone }: { projects: Project[]; onDone: (
         email: email.trim(),
         phone: phone.trim() || undefined,
         password,
-        role: isAdmin ? 'admin' : 'worker',
+        role,
         projectIds,
       });
       notify('Account created', `${displayName} can now sign in with ${email.trim()}.`);
@@ -244,9 +248,21 @@ function CreateWorkerCard({ projects, onDone }: { projects: Project[]; onDone: (
       <TextInput style={styles.input} placeholder="Phone (+16045551234, for SMS)" placeholderTextColor={colors.textTertiary} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
       <TextInput style={styles.input} placeholder="Temporary password (8+ chars)" placeholderTextColor={colors.textTertiary} autoCapitalize="none" value={password} onChangeText={setPassword} />
 
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Admin account</Text>
-        <Switch value={isAdmin} onValueChange={setIsAdmin} />
+      <Text style={styles.detailLabel}>Account type</Text>
+      <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+        {([
+          { id: 'worker', label: 'Worker' },
+          { id: 'manager', label: 'Manager (view-only)' },
+          { id: 'admin', label: 'Admin' },
+        ] as const).map((r) => (
+          <Pressable
+            key={r.id}
+            style={[styles.roleChip, role === r.id && styles.roleChipOn]}
+            onPress={() => setRole(r.id)}
+          >
+            <Text style={[styles.roleChipText, role === r.id && styles.roleChipTextOn]}>{r.label}</Text>
+          </Pressable>
+        ))}
       </View>
 
       <Text style={[styles.detailLabel, { marginTop: spacing.sm }]}>Assign to projects</Text>
