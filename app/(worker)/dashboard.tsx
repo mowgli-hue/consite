@@ -25,6 +25,7 @@ import {
 
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { DailyBriefing } from '../../src/components/DailyBriefing';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { DashboardModule } from '../../src/types';
 
@@ -116,6 +117,8 @@ export default function WorkerDashboard() {
             <Feather name="log-out" size={22} color={colors.textSecondary} />
           </Pressable>
         </View>
+
+        <DailyBriefing />
 
         {notices.map((n) => (
           <View key={n.id} style={styles.notice}>
