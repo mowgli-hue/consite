@@ -15,6 +15,7 @@ import { collection, doc, getDocs, query, updateDoc } from 'firebase/firestore';
 
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { useT, type Lang } from '../../src/contexts/I18nContext';
 import { notify } from '../../src/lib/notify';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
@@ -23,6 +24,7 @@ type SafetyDoc = { id: string; title: string; url?: string };
 
 export default function WorkerProfile() {
   const { user } = useAuth();
+  const { t, lang, setLang } = useT();
   const [wcb, setWcb] = useState('');
   const [ecName, setEcName] = useState('');
   const [ecPhone, setEcPhone] = useState('');
@@ -105,7 +107,20 @@ export default function WorkerProfile() {
           {!!wcb && !dirty && <Text style={styles.wcbLine}>WCB # {wcb}</Text>}
         </View>
 
-        <Text style={styles.sectionLabel}>Safety ID</Text>
+        <Text style={styles.sectionLabel}>{t('Language')} · ਭਾਸ਼ਾ</Text>
+        <View style={styles.langRow}>
+          {([['en', 'English'], ['pa', 'ਪੰਜਾਬੀ']] as Array<[Lang, string]>).map(([code, label]) => (
+            <Pressable
+              key={code}
+              style={[styles.langChip, lang === code && styles.langChipOn]}
+              onPress={() => setLang(code)}
+            >
+              <Text style={[styles.langChipText, lang === code && styles.langChipTextOn]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Text style={styles.sectionLabel}>{t('Safety ID')}</Text>
         <View style={styles.card}>
           <Text style={styles.fieldLabel}>WCB / WorkSafeBC number</Text>
           <TextInput
@@ -245,4 +260,13 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontSize: typography.sizes.md, fontWeight: typography.weights.medium, color: colors.text },
   rowSub: { fontSize: typography.sizes.sm, color: colors.textSecondary, marginTop: 2 },
+
+  langRow: { flexDirection: 'row', gap: spacing.sm },
+  langChip: {
+    flex: 1, alignItems: 'center', paddingVertical: spacing.md,
+    borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  langChipOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  langChipText: { color: colors.textSecondary, fontWeight: typography.weights.medium },
+  langChipTextOn: { color: colors.primary, fontWeight: typography.weights.bold },
 });

@@ -37,11 +37,13 @@ import {
   clockInWithOfflineFallback, clockOutLocalShift, getLocalOpenShift, type LocalShift,
 } from '../../src/lib/attendance';
 import { flush } from '../../src/lib/offlineQueue';
+import { useT } from '../../src/contexts/I18nContext';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { Project, AttendanceRecord } from '../../src/types';
 
 export default function ClockScreen() {
   const { user } = useAuth();
+  const { t } = useT();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openShift, setOpenShift] = useState<AttendanceRecord | null>(null);
@@ -159,7 +161,7 @@ export default function ClockScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Clock In / Out</Text>
+        <Text style={styles.headerTitle}>{t('Clock In / Out')}</Text>
       </View>
 
       {loading ? (
@@ -189,7 +191,7 @@ export default function ClockScreen() {
             <EmptyState />
           ) : (
             <>
-              <Text style={styles.sectionLabel}>Select project</Text>
+              <Text style={styles.sectionLabel}>{t('Select project')}</Text>
               {projects.map((p) => (
                 <Pressable
                   key={p.id}
@@ -225,7 +227,7 @@ export default function ClockScreen() {
                 ) : (
                   <>
                     <Feather name="log-in" size={20} color={colors.textInverse} />
-                    <Text style={styles.bigButtonText}>Clock In</Text>
+                    <Text style={styles.bigButtonText}>{t('Clock In')}</Text>
                   </>
                 )}
               </Pressable>
@@ -248,6 +250,7 @@ function ActiveShift({
   onClockOut: () => void;
   submitting: boolean;
 }) {
+  const { t } = useT();
   const clockInMs = tsToMs(openShift.clockInAt) ?? Date.now();
   const elapsed = Date.now() - clockInMs;
   const hours = Math.floor(elapsed / 3_600_000);
@@ -256,7 +259,7 @@ function ActiveShift({
   return (
     <View style={styles.activeShift}>
       <View style={styles.statusDot} />
-      <Text style={styles.activeLabel}>On the clock</Text>
+      <Text style={styles.activeLabel}>{t('On the clock')}</Text>
       <Text style={styles.activeProject}>{project?.name ?? 'Project'}</Text>
       <Text style={styles.activeTime}>
         {hours}h {minutes}m
@@ -273,7 +276,7 @@ function ActiveShift({
         ) : (
           <>
             <Feather name="log-out" size={20} color={colors.textInverse} />
-            <Text style={styles.bigButtonText}>Clock Out</Text>
+            <Text style={styles.bigButtonText}>{t('Clock Out')}</Text>
           </>
         )}
       </Pressable>
@@ -282,11 +285,12 @@ function ActiveShift({
 }
 
 function EmptyState() {
+  const { t } = useT();
   return (
     <View style={styles.empty}>
       <Feather name="briefcase" size={32} color={colors.textTertiary} />
-      <Text style={styles.emptyTitle}>No projects assigned</Text>
-      <Text style={styles.emptySub}>Ask your admin to add you to a project.</Text>
+      <Text style={styles.emptyTitle}>{t('No projects assigned')}</Text>
+      <Text style={styles.emptySub}>{t('Ask your admin to add you to a project.')}</Text>
     </View>
   );
 }

@@ -2,6 +2,7 @@ import { View, useWindowDimensions } from 'react-native';
 import { Tabs, Redirect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { useT } from '../../src/contexts/I18nContext';
 import { SideNav, type NavItem } from '../../src/components/SideNav';
 import { colors } from '../../src/theme';
 
@@ -23,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function WorkerLayout() {
   const { ready, user } = useAuth();
+  const { t } = useT();
   const { width } = useWindowDimensions();
   const wide = width >= 900;
 
@@ -46,21 +48,21 @@ export default function WorkerLayout() {
           <Tabs.Screen
             name="dashboard"
             options={{
-              title: 'Home',
+              title: t('Home'),
               tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
             }}
           />
           <Tabs.Screen
             name="clock"
             options={{
-              title: 'Clock',
+              title: t('Clock'),
               tabBarIcon: ({ color, size }) => <Feather name="clock" size={size} color={color} />,
             }}
           />
           <Tabs.Screen
             name="tasks"
             options={{
-              title: 'Tasks',
+              title: t('Tasks'),
               tabBarIcon: ({ color, size }) => <Feather name="clipboard" size={size} color={color} />,
             }}
           />

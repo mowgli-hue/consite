@@ -26,6 +26,7 @@ import {
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { flush, onQueueChange } from '../../src/lib/offlineQueue';
+import { useT } from '../../src/contexts/I18nContext';
 import { DailyBriefing } from '../../src/components/DailyBriefing';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { DashboardModule } from '../../src/types';
@@ -52,6 +53,7 @@ type WorkerNotice = { id: string; title: string; body?: string };
 
 export default function WorkerDashboard() {
   const { user, signOut } = useAuth();
+  const { t } = useT();
   const [modules, setModules] = useState<DashboardModule[]>(DEFAULT_MODULES);
   const [refreshing, setRefreshing] = useState(false);
   const [notices, setNotices] = useState<WorkerNotice[]>([]);
@@ -121,7 +123,7 @@ export default function WorkerDashboard() {
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Welcome back</Text>
+            <Text style={styles.greeting}>{t('Welcome back')}</Text>
             <Text style={styles.name}>{user?.displayName ?? 'Worker'}</Text>
           </View>
           <Pressable hitSlop={8} onPress={signOut}>
@@ -169,8 +171,8 @@ export default function WorkerDashboard() {
               <View style={[styles.iconWrap, { backgroundColor: m.color ?? colors.primarySoft }]}>
                 <Feather name={iconFor(m.icon)} size={22} color={m.color ? '#fff' : colors.primary} />
               </View>
-              <Text style={styles.cardLabel}>{m.label}</Text>
-              {m.subtitle && <Text style={styles.cardSubtitle}>{m.subtitle}</Text>}
+              <Text style={styles.cardLabel}>{t(m.label)}</Text>
+              {m.subtitle && <Text style={styles.cardSubtitle}>{t(m.subtitle)}</Text>}
             </Pressable>
           ))}
         </View>
