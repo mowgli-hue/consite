@@ -32,7 +32,11 @@ import {
 
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { clockIn, clockOut, findOpenShift, tsToMs } from '../../src/lib/attendance';
+import {
+  clockOut, findOpenShift, tsToMs,
+  clockInWithOfflineFallback, clockOutLocalShift, getLocalOpenShift, type LocalShift,
+} from '../../src/lib/attendance';
+import { flush } from '../../src/lib/offlineQueue';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { Project, AttendanceRecord } from '../../src/types';
 
@@ -41,12 +45,15 @@ export default function ClockScreen() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openShift, setOpenShift] = useState<AttendanceRecord | null>(null);
+  const [localShift, setLocalShift] = useState<LocalShift | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
+    flush().catch(() => {}); // opportunistic sync of anything queued offline
+    setLocalShift(await getLocalOpenShift());
     try {
       // 1. Load projects the user is assigned to
       let projectIds = user.projectIds ?? [];
@@ -97,11 +104,11 @@ export default function ClockScreen() {
 
     setSubmitting(true);
     try {
-      const result = await clockIn({ uid: user.uid, displayName: user.displayName, project });
-      const distance = result.gps?.distanceFromProjectM;
+      const result = await clockInWithOfflineFallback({ uid: user.uid, displayName: user.displayName, project });
+      const distance = result.distanceM;
       // The site paperwork moment: clocked in → do today's FLHA now.
       confirm(
-        'Clocked in ✓',
+        result.offline ? 'Clocked in ✓ (offline — will sync)' : 'Clocked in ✓',
         (distance != null ? `You're ${distance}m from site center. ` : '') +
           'Complete your FLHA for today?',
         () => router.push(`/forms/${project.defaultFlhaFormId ?? 'flha-daily-v1'}?projectId=${project.id}` as any),
@@ -116,22 +123,29 @@ export default function ClockScreen() {
   }
 
   async function handleClockOut() {
-    if (!user || !openShift) return;
+    if (!user || (!openShift && !localShift)) return;
     setSubmitting(true);
     try {
-      await clockOut({
-        projectId: openShift.projectId,
-        recordId: openShift.id,
-        actorUid: user.uid,
-        workerUid: openShift.uid,
-      });
+      const pid = openShift?.projectId ?? localShift!.projectId;
+      if (localShift) {
+        // Offline-captured shift — queue the clock-out behind it.
+        await clockOutLocalShift(localShift);
+        flush().catch(() => {});
+      } else if (openShift) {
+        await clockOut({
+          projectId: openShift.projectId,
+          recordId: openShift.id,
+          actorUid: user.uid,
+          workerUid: openShift.uid,
+        });
+      }
       // End-of-Day questions live at clock-out, not in the morning form.
-      const proj = projects.find((p) => p.id === openShift.projectId);
+      const proj = projects.find((p) => p.id === pid);
       const flhaId = proj?.defaultFlhaFormId ?? 'flha-daily-v1';
       confirm(
-        'Clocked out ✓',
+        localShift ? 'Clocked out ✓ (offline — will sync)' : 'Clocked out ✓',
         'Quick end-of-day check: cleanup, incidents — 30 seconds.',
-        () => router.push(`/forms/${flhaId}?projectId=${openShift.projectId}&phase=checkout` as any),
+        () => router.push(`/forms/${flhaId}?projectId=${pid}&phase=checkout` as any),
         'Finish the day',
       );
       await load();
@@ -152,6 +166,16 @@ export default function ClockScreen() {
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
+      ) : localShift ? (
+        <ActiveShift
+          openShift={{
+            id: localShift.localId, projectId: localShift.projectId,
+            uid: user?.uid ?? '', clockInAt: localShift.clockInMs,
+          } as AttendanceRecord}
+          project={projects.find((p) => p.id === localShift.projectId)}
+          onClockOut={handleClockOut}
+          submitting={submitting}
+        />
       ) : openShift ? (
         <ActiveShift
           openShift={openShift}

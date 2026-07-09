@@ -32,6 +32,7 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../../../src/lib/firebase';
+import { enqueue, withTimeout } from '../../../src/lib/offlineQueue';
 import { useAuth } from '../../../src/contexts/AuthContext';
 import { fillFormWithAi } from '../../../src/lib/ai';
 import { FormRenderer } from '../../../src/components/FormRenderer';
@@ -239,7 +240,27 @@ export default function FormFillScreen() {
         aiAssisted: aiFilledKeys.size > 0,
         voiceTranscript: voiceTranscript || null,
       };
-      const ref = await addDoc(collection(db, 'projects', projectId, 'submissions'), submission);
+      let ref;
+      try {
+        ref = await withTimeout(addDoc(collection(db, 'projects', projectId, 'submissions'), submission), 12_000);
+      } catch (err: any) {
+        const msg = String(err?.message ?? '').toLowerCase();
+        if (msg.includes('offline-timeout') || msg.includes('network') || msg.includes('unavailable')) {
+          // Dead zone — keep the signed form on the phone, sync later.
+          await enqueue({
+            kind: 'add',
+            collectionPath: `projects/${projectId}/submissions`,
+            data: { ...submission, submittedAt: Date.now(), pendingSync: true },
+            tsFields: ['submittedAt'],
+            label: `${schema.title} · form`,
+          });
+          setPhase('done');
+          Alert.alert('Saved offline', 'No signal — your signed form is stored on this phone and will submit automatically when you\'re back in coverage.');
+          router.back();
+          return;
+        }
+        throw err;
+      }
 
       try {
         const uri = await exportSubmissionToPdf(schema, {

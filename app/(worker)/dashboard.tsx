@@ -25,6 +25,7 @@ import {
 
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { flush, onQueueChange } from '../../src/lib/offlineQueue';
 import { DailyBriefing } from '../../src/components/DailyBriefing';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { DashboardModule } from '../../src/types';
@@ -53,6 +54,12 @@ export default function WorkerDashboard() {
   const [modules, setModules] = useState<DashboardModule[]>(DEFAULT_MODULES);
   const [refreshing, setRefreshing] = useState(false);
   const [notices, setNotices] = useState<WorkerNotice[]>([]);
+  const [pendingSync, setPendingSync] = useState(0);
+
+  useEffect(() => {
+    flush().catch(() => {}); // sync anything captured offline as soon as we're home
+    return onQueueChange(setPendingSync);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -120,6 +127,15 @@ export default function WorkerDashboard() {
             <Feather name="log-out" size={22} color={colors.textSecondary} />
           </Pressable>
         </View>
+
+        {pendingSync > 0 && (
+          <Pressable style={styles.syncBanner} onPress={() => flush().catch(() => {})}>
+            <Feather name="upload-cloud" size={16} color={colors.warning} />
+            <Text style={styles.syncText}>
+              {pendingSync} update{pendingSync === 1 ? '' : 's'} saved offline — tap to sync now
+            </Text>
+          </Pressable>
+        )}
 
         <DailyBriefing />
 
@@ -215,6 +231,13 @@ const styles = StyleSheet.create({
   },
   noticeTitle: { color: colors.text, fontWeight: typography.weights.semibold, fontSize: typography.sizes.sm },
   noticeBody: { color: colors.textSecondary, fontSize: typography.sizes.xs, marginTop: 1 },
+  syncBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.warningSoft, borderRadius: radii.md,
+    borderWidth: 1, borderColor: colors.warning,
+    padding: spacing.md, marginBottom: spacing.md,
+  },
+  syncText: { color: colors.text, fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, flex: 1 },
   card: {
     // 2-up on phones, flows to 3–5 columns on desktop widths.
     flexBasis: '48%',

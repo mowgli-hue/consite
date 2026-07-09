@@ -1,8 +1,101 @@
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, doc, getDocs, query, where, serverTimestamp, addDoc, updateDoc, Timestamp, limit } from 'firebase/firestore';
 import { db } from './firebase';
 import { checkGeofence } from './geofence';
+import { enqueue, withTimeout } from './offlineQueue';
 import type { Project, AttendanceRecord, ClockInValidationResult, AttendanceGps } from '../types';
+
+const LOCAL_SHIFT_KEY = 'consite.localOpenShift.v1';
+
+/** A clock-in captured offline, waiting to sync. */
+export interface LocalShift {
+  localId: string;
+  projectId: string;
+  projectName: string;
+  clockInMs: number;
+}
+
+export async function getLocalOpenShift(): Promise<LocalShift | null> {
+  try {
+    const raw = await AsyncStorage.getItem(LOCAL_SHIFT_KEY);
+    return raw ? (JSON.parse(raw) as LocalShift) : null;
+  } catch { return null; }
+}
+
+function isNetworkError(err: unknown): boolean {
+  const m = String((err as Error)?.message ?? '').toLowerCase();
+  const code = String((err as { code?: string })?.code ?? '');
+  return m.includes('offline-timeout') || m.includes('network') || m.includes('unavailable') ||
+    m.includes('backend') || code === 'unavailable' || code === 'deadline-exceeded';
+}
+
+/**
+ * Clock in; if the network is dead, verify the geofence locally (GPS works
+ * offline) and queue the record for sync. Returns { offline: true } in that
+ * case so the UI can say so.
+ */
+export async function clockInWithOfflineFallback(opts: {
+  uid: string; displayName?: string; project: Project;
+}): Promise<{ offline: boolean; distanceM?: number }> {
+  const { uid, displayName, project } = opts;
+  try {
+    const result = await withTimeout(clockIn(opts), 10_000);
+    return { offline: false, distanceM: result.gps?.distanceFromProjectM };
+  } catch (err) {
+    if (!isNetworkError(err)) throw err; // real rejection (geofence, already clocked in…)
+  }
+
+  // ── Offline path: GPS + local geofence, then queue ──
+  let gps: AttendanceGps | null = null;
+  if (project.geofenceEnabled) {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') throw new Error('Location permission is required to clock in.');
+    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+    const check = checkGeofence(
+      { lat: pos.coords.latitude, lng: pos.coords.longitude },
+      project.geofence,
+      pos.coords.accuracy ?? 0,
+    );
+    gps = {
+      lat: pos.coords.latitude, lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy ?? 0, distanceFromProjectM: check.distanceM,
+    };
+    if (!check.inside) {
+      throw new Error(`You are ${check.distanceM}m from the site. Move within ${project.geofence.radiusM}m to clock in.`);
+    }
+  }
+
+  const clockInMs = Date.now();
+  const localId = await enqueue({
+    kind: 'add',
+    collectionPath: `projects/${project.id}/attendance`,
+    data: {
+      uid, displayName: displayName ?? null,
+      clockInAt: clockInMs, clockOutAt: null, clockOutBy: null,
+      clockInGps: gps, override: null, offlineQueued: true,
+    },
+    tsFields: ['clockInAt'],
+    label: `Clock-in · ${project.name}`,
+  });
+  await AsyncStorage.setItem(LOCAL_SHIFT_KEY, JSON.stringify({
+    localId, projectId: project.id, projectName: project.name, clockInMs,
+  } satisfies LocalShift));
+  return { offline: true, distanceM: gps?.distanceFromProjectM };
+}
+
+/** Clock out of an offline-captured shift — queues the update behind the clock-in. */
+export async function clockOutLocalShift(shift: LocalShift): Promise<void> {
+  await enqueue({
+    kind: 'update',
+    collectionPath: '',
+    docPath: `projects/${shift.projectId}/attendance/${shift.localId}`,
+    data: { clockOutAt: Date.now(), status: 'pending' },
+    tsFields: ['clockOutAt'],
+    label: `Clock-out · ${shift.projectName}`,
+  });
+  await AsyncStorage.removeItem(LOCAL_SHIFT_KEY);
+}
 
 export async function clockIn(opts: { uid: string; displayName?: string; project: Project; override?: { reason: string; approvedBy: string } }) {
   const { uid, displayName, project, override } = opts;
