@@ -39,6 +39,10 @@ export interface User {
   createdBy?: string; // admin uid
   /** Cached list of project IDs the user is assigned to. Updated by Cloud Function. */
   projectIds?: string[];
+  /** WorkSafeBC / WCB personal identification number. */
+  wcbNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
 }
 
 export interface ProjectMember {

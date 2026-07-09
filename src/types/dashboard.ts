@@ -16,6 +16,7 @@ export type DashboardIcon =
   | 'bell'         // notifications
   | 'bar-chart'    // reports
   | 'calendar'     // timesheet / schedule
+  | 'user'         // profile
   | 'settings';
 
 export interface DashboardModule {

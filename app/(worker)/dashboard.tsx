@@ -38,6 +38,7 @@ const DEFAULT_MODULES: DashboardModule[] = [
   { id: 'punch-list', label: 'Punch List', icon: 'bar-chart', route: '/punch-list?projectId=sample-project-1', order: 6, visible: true, requiredPermissions: [], subtitle: 'Open issues' },
   { id: 'certs', label: 'My Tickets', icon: 'shield', route: '/certifications', order: 7, visible: true, requiredPermissions: [], subtitle: 'WHMIS, fall arrest' },
   { id: 'projects', label: 'Projects', icon: 'briefcase', route: '/projects', order: 8, visible: true, requiredPermissions: [] },
+  { id: 'profile', label: 'My Profile', icon: 'user', route: '/profile', order: 9, visible: true, requiredPermissions: [], subtitle: 'WCB, tickets & safety docs' },
 ];
 
 type WorkerNotice = { id: string; title: string; body?: string };
@@ -162,6 +163,7 @@ function iconFor(icon: DashboardModule['icon']): keyof typeof Feather.glyphMap {
     image: 'image',
     'file-text': 'file-text',
     calendar: 'calendar',
+    user: 'user',
     clock: 'clock',
     users: 'users',
     shield: 'shield',

@@ -42,7 +42,14 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isMe(uid) || isAdmin();
-      allow create, update, delete: if isAdmin();
+      allow create, delete: if isAdmin();
+      // Workers may edit their own profile details but can never touch
+      // role, active status, or project assignments.
+      allow update: if isAdmin() ||
+        (isMe(uid) &&
+         request.resource.data.role == resource.data.role &&
+         request.resource.data.active == resource.data.active &&
+         request.resource.data.projectIds == resource.data.projectIds);
     }
 
     // ─────────────────────────────────────────────────────
