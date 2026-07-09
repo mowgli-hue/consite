@@ -20,6 +20,9 @@ export { onAttendanceCreated, onSubmissionCreated } from './triggers';
 // Notifications (admin inbox + worker alerts)
 export { onDeficiencyCreated, missedClockoutSweep, onWorkerAssigned } from './notifications';
 
+// Records pipeline (submission → PDF → email)
+export { onSubmissionRecord } from './records';
+
 // AI form-fill engine
 export {
   aiFillForm,
