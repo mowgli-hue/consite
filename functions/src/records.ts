@@ -19,6 +19,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { logger } from 'firebase-functions';
 import PDFDocument from 'pdfkit';
+import { fillFlhaTemplate } from './flha-pdf';
 
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
 const RECORDS_EMAIL = defineSecret('RECORDS_EMAIL');
@@ -63,6 +64,22 @@ export const onSubmissionRecord = onDocumentCreated(
     const category = String(schema?.category ?? 'form').toUpperCase();
 
     // ── Render PDF ────────────────────────────────────
+    // Brown Bros FLHA: fill the REAL MHSA form so the office receives the
+    // exact sheet they already use. Anything else (or a fill failure) gets
+    // the generic transcript renderer below.
+    if (sub.schemaId === 'flha-brownbros-v1') {
+      try {
+        const pdf = await fillFlhaTemplate({ values: values as Record<string, unknown>, dateStr, submittedBy: personName });
+        const pdfPath = `projects/${projectId}/submissions/${subId}/record.pdf`;
+        await bucket.file(pdfPath).save(pdf, { contentType: 'application/pdf' });
+        await event.data?.ref.update({ pdfStoragePath: pdfPath });
+        await emailRecord({ pdf, category, projectName, dateStr, personName, formTitle });
+        return;
+      } catch (err) {
+        logger.error('MHSA template fill failed — falling back to generic renderer', err);
+      }
+    }
+
     const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
@@ -150,31 +167,39 @@ export const onSubmissionRecord = onDocumentCreated(
     await event.data?.ref.update({ pdfStoragePath: pdfPath });
 
     // ── Email it ──────────────────────────────────────
-    const subject = `${category} · ${projectName} · ${dateStr} · ${personName}`;
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY.value()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: RECORDS_FROM,
-        to: [RECORDS_EMAIL.value()],
-        subject,
-        text:
-          `${formTitle}\n\nProject: ${projectName}\nDate: ${dateStr}\nSubmitted by: ${personName}\n\n` +
-          'The signed PDF record is attached. This is an automated record from Consite.',
-        attachments: [{
-          filename: `${category}-${projectName.replace(/\W+/g, '-')}-${dateStr}.pdf`,
-          content: pdf.toString('base64'),
-        }],
-      }),
-    });
-
-    if (!res.ok) {
-      logger.error(`Resend failed (${res.status}): ${await res.text()}`);
-    } else {
-      logger.info(`Record emailed: ${subject}`);
-    }
+    await emailRecord({ pdf, category, projectName, dateStr, personName, formTitle });
   },
 );
+
+async function emailRecord(opts: {
+  pdf: Buffer; category: string; projectName: string;
+  dateStr: string; personName: string; formTitle: string;
+}) {
+  const { pdf, category, projectName, dateStr, personName, formTitle } = opts;
+  const subject = `${category} · ${projectName} · ${dateStr} · ${personName}`;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY.value()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: RECORDS_FROM,
+      to: [RECORDS_EMAIL.value()],
+      subject,
+      text:
+        `${formTitle}\n\nProject: ${projectName}\nDate: ${dateStr}\nSubmitted by: ${personName}\n\n` +
+        'The signed PDF record is attached. This is an automated record from Consite.',
+      attachments: [{
+        filename: `${category}-${projectName.replace(/\W+/g, '-')}-${dateStr}.pdf`,
+        content: pdf.toString('base64'),
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    logger.error(`Resend failed (${res.status}): ${await res.text()}`);
+  } else {
+    logger.info(`Record emailed: ${subject}`);
+  }
+}
