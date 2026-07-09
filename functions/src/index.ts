@@ -33,5 +33,6 @@ export {
   aiAnalyzeDeficiency,
   aiAnalyzeReceipt,
   aiAnalyzeWork,
+  aiScanPhoto,
   aiGenerateDailyLog,
 } from './ai-fill';

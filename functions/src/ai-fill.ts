@@ -37,6 +37,7 @@ import {
   RECEIPT_OCR_SYSTEM_PROMPT,
   DAILY_LOG_SYSTEM_PROMPT,
   WORKLOG_SYSTEM_PROMPT,
+  SCAN_SYSTEM_PROMPT,
 } from './ai-prompts';
 import { buildContext } from './context';
 import type { FormSchema, FormValues } from './shared-types';
@@ -230,6 +231,67 @@ export const aiAnalyzeDeficiency = onCall<AnalyzeDeficiencyRequest, Promise<Anal
     });
 
     const parsed = parseJsonResponse<AnalyzeDeficiencyResponse>(extractText(resp));
+    if (!parsed) throw new HttpsError('internal', 'AI response was not valid JSON.');
+    return parsed;
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// aiScanPhoto — the AI Camera: classify anything, extract everything
+// ─────────────────────────────────────────────────────────────────────────
+
+interface ScanRequest {
+  imageBase64: string;
+  imageMediaType: 'image/jpeg' | 'image/png' | 'image/webp';
+  voiceTranscript?: string;
+}
+
+interface ScanResponse {
+  kind: 'progress' | 'materials' | 'safety' | 'other';
+  summary: string;
+  trade: string;
+  location: string;
+  materials: Array<{ item: string; quantity: string }>;
+  safetyIssues: string[];
+  progressPct: number | null;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export const aiScanPhoto = onCall<ScanRequest, Promise<ScanResponse>>(
+  { secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 30 },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const { imageBase64, imageMediaType, voiceTranscript } = request.data;
+    if (!imageBase64) {
+      throw new HttpsError('invalid-argument', 'imageBase64 required.');
+    }
+
+    const resp = await getClient().messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: 700,
+      system: SCAN_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: imageMediaType, data: imageBase64 },
+            },
+            {
+              type: 'text',
+              text: voiceTranscript
+                ? `Worker said: "${voiceTranscript}"\n\nAnalyze the photo.`
+                : 'Analyze the photo.',
+            },
+          ],
+        },
+      ],
+    });
+
+    const parsed = parseJsonResponse<ScanResponse>(extractText(resp));
     if (!parsed) throw new HttpsError('internal', 'AI response was not valid JSON.');
     return parsed;
   }

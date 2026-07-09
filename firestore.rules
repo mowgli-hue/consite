@@ -146,6 +146,14 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
+      // Material counts (AI Camera) — members record; office reads.
+      match /materialCounts/{countId} {
+        allow read: if isStaff() || isProjectMember(pid);
+        allow create: if isProjectMember(pid) &&
+                         request.resource.data.countedBy == request.auth.uid;
+        allow update, delete: if isAdmin();
+      }
+
       // Work log — members post their own entries; foremen/admin can amend.
       match /workLog/{entryId} {
         allow read: if isStaff() || isProjectMember(pid);
@@ -242,6 +250,26 @@ service cloud.firestore {
     match /notifications/{nid} {
       allow read, update: if isStaff(); // manager reads inbox + marks read
       allow create, delete: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────
+    // CRM — clients and their communication log. The legal record of
+    // who said what, when. Office only.
+    // ─────────────────────────────────────────────────────
+
+    match /clients/{clientId} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+
+      // Comm log entries are append-only: no edits, no deletes — that's
+      // what makes it a record.
+      match /comms/{commId} {
+        allow read: if isStaff();
+        allow create: if isAdmin() &&
+                         request.resource.data.byUid == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
   }
 }

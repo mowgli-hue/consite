@@ -81,6 +81,23 @@ export async function analyzeWork(opts: { imageBase64: string; imageMediaType: '
   return res.data;
 }
 
+export interface ScanResult {
+  kind: 'progress' | 'materials' | 'safety' | 'other';
+  summary: string;
+  trade: string;
+  location: string;
+  materials: Array<{ item: string; quantity: string }>;
+  safetyIssues: string[];
+  progressPct: number | null;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export async function scanPhoto(opts: { imageBase64: string; imageMediaType: 'image/jpeg' | 'image/png' | 'image/webp'; voiceTranscript?: string }): Promise<ScanResult> {
+  const fn = httpsCallable<typeof opts, ScanResult>(functions, 'aiScanPhoto');
+  const res = await fn(opts);
+  return res.data;
+}
+
 export interface DailyLogResult {
   log: string;
   summary: string;

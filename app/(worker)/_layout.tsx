@@ -9,6 +9,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Home', icon: 'home', route: '/dashboard' },
   { label: 'Clock In / Out', icon: 'clock', route: '/clock' },
   { label: 'My Tasks', icon: 'clipboard', route: '/tasks' },
+  { label: 'AI Scan', icon: 'camera', route: '/scan' },
   { label: 'Work Update', icon: 'image', route: '/work-log' },
   { label: 'My Hours', icon: 'calendar', route: '/timesheet' },
   { label: 'Crew Hours', icon: 'users', route: '/crew' },
@@ -79,6 +80,7 @@ export default function WorkerLayout() {
           <Tabs.Screen name="work-log" options={{ href: null }} />
           <Tabs.Screen name="drawings" options={{ href: null }} />
           <Tabs.Screen name="drawing" options={{ href: null }} />
+          <Tabs.Screen name="scan" options={{ href: null }} />
         </Tabs>
       </View>
     </View>

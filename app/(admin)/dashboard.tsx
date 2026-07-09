@@ -26,6 +26,7 @@ const TODAY_MODULES: Module[] = [
 
 const MANAGE_MODULES: Module[] = [
   { id: 'users', label: 'Users', icon: 'users', subtitle: 'Workers & accounts', route: '/(admin)/users' },
+  { id: 'clients', label: 'Clients', icon: 'phone', subtitle: 'CRM & comm records', route: '/(admin)/clients' },
   { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Sites & geofences', route: '/(admin)/projects' },
   { id: 'compliance', label: 'Compliance', icon: 'shield', subtitle: 'Cert expiries', route: '/(admin)/compliance' },
 ];
