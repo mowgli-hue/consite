@@ -74,7 +74,7 @@ export async function createWorkerAccount(data: {
   // createWorker sets user.projectIds but not the project-side records —
   // mirror the assignment so rules (isProjectMember) and queries line up.
   for (const pid of data.projectIds ?? []) {
-    await addMembership(uid, pid, 'system:createWorker');
+    await addMembership(uid, pid, 'system:createWorker', data.displayName);
   }
   return uid;
 }
@@ -83,8 +83,8 @@ export async function setUserActive(uid: string, active: boolean) {
   await updateDoc(doc(db, 'users', uid), { active });
 }
 
-export async function assignToProject(uid: string, projectId: string, adminUid: string) {
-  await addMembership(uid, projectId, adminUid);
+export async function assignToProject(uid: string, projectId: string, adminUid: string, displayName?: string) {
+  await addMembership(uid, projectId, adminUid, displayName);
   await updateDoc(doc(db, 'users', uid), { projectIds: arrayUnion(projectId) });
 }
 
@@ -94,9 +94,10 @@ export async function removeFromProject(uid: string, projectId: string) {
   await updateDoc(doc(db, 'users', uid), { projectIds: arrayRemove(projectId) });
 }
 
-async function addMembership(uid: string, projectId: string, assignedBy: string) {
+async function addMembership(uid: string, projectId: string, assignedBy: string, displayName?: string) {
   await setDoc(doc(db, 'projects', projectId, 'members', uid), {
     uid,
+    displayName: displayName ?? null, // lets foremen see crew names (no /users access)
     role: 'worker',
     permissions: DEFAULT_WORKER_PERMISSIONS,
     assignedAt: Date.now(),

@@ -24,9 +24,16 @@ service firebase.storage {
     // Project assets: plans, media, submissions, signatures
     // ──────────────────────────────────────────────
 
+    function memberRole(pid) {
+      return firestore.get(/databases/(default)/documents/projects/$(pid)/members/$(request.auth.uid)).data.role;
+    }
+
     match /projects/{pid}/plans/{planId}/{filename} {
       allow read: if isProjectMember(pid) || isAdmin();
-      allow write: if isAdmin();
+      // Foremen photograph/upload drawings from the field.
+      allow write: if (isAdmin() ||
+                      (isProjectMember(pid) && memberRole(pid) in ['foreman', 'lead-foreman', 'supervisor']))
+                   && request.resource.size < 25 * 1024 * 1024;
     }
 
     match /projects/{pid}/media/{mediaId}/{filename} {

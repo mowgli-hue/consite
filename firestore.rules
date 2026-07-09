@@ -66,10 +66,25 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
 
-      // Plans — view requires project access; admin uploads (v0.2: workers w/ perm)
+      // Plans — view requires project access; foremen and admin upload.
       match /plans/{planId} {
         allow read: if isProjectMember(pid) || isAdmin();
-        allow create, update, delete: if isAdmin();
+        allow create, update: if isAdmin() ||
+                                 hasProjectPerm(pid, 'supervisor.forms.approve');
+        allow delete: if isAdmin();
+
+        // Pin-tasks on the drawing: foremen create/assign; the assigned
+        // worker can mark their own pin done; foremen/admin accept.
+        match /pins/{pinId} {
+          allow read: if isProjectMember(pid) || isAdmin();
+          allow create: if isAdmin() ||
+                           hasProjectPerm(pid, 'supervisor.forms.approve');
+          allow update: if isAdmin() ||
+                           hasProjectPerm(pid, 'supervisor.forms.approve') ||
+                           (resource.data.assigneeUid == request.auth.uid &&
+                            request.resource.data.status != 'accepted');
+          allow delete: if isAdmin();
+        }
       }
 
       // Media — workers w/ upload perm can create; only the uploader or admin can delete

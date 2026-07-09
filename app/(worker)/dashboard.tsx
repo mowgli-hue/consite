@@ -33,6 +33,8 @@ const DEFAULT_MODULES: DashboardModule[] = [
   { id: 'clock', label: 'Clock In / Out', icon: 'clock', route: '/clock', order: 1, visible: true, requiredPermissions: [], subtitle: 'GPS-verified' },
   { id: 'forms', label: 'FLHA Forms', icon: 'shield', route: '/forms/flha-daily-v1?projectId=sample-project-1', order: 2, visible: true, requiredPermissions: [], subtitle: 'AI auto-filled' },
   { id: 'work-log', label: 'Work Update', icon: 'image', route: '/work-log?projectId=sample-project-1', order: 2, visible: true, requiredPermissions: [], subtitle: 'Photo + voice → done' },
+  { id: 'tasks', label: 'My Tasks', icon: 'clipboard', route: '/tasks', order: 2, visible: true, requiredPermissions: [], subtitle: 'Pinned work for you' },
+  { id: 'drawings', label: 'Site Drawings', icon: 'file-text', route: '/drawings?projectId=sample-project-1', order: 6, visible: true, requiredPermissions: [], subtitle: 'Plans & pin-tasks' },
   { id: 'crew', label: 'Crew Hours', icon: 'users', route: '/crew', order: 3, visible: true, requiredPermissions: [], subtitle: 'Approve crew shifts' },
   { id: 'deficiency', label: 'Report Issue', icon: 'image', route: '/deficiency?projectId=sample-project-1', order: 3, visible: true, requiredPermissions: [], subtitle: 'Photo + voice' },
   { id: 'receipt', label: 'Scan Receipt', icon: 'file-text', route: '/receipt?projectId=sample-project-1', order: 4, visible: true, requiredPermissions: [], subtitle: 'To job cost' },

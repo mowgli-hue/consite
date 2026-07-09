@@ -62,6 +62,27 @@ export const onWorkerAssigned = onDocumentCreated(
   },
 );
 
+/** Worker gets an in-app notification when a pin-task is assigned to them. */
+export const onPinAssigned = onDocumentCreated(
+  'projects/{projectId}/plans/{planId}/pins/{pinId}',
+  async (event) => {
+    const data = event.data?.data();
+    if (!data?.assigneeUid) return;
+
+    const db = getFirestore();
+    const projSnap = await db.collection('projects').doc(event.params.projectId).get();
+    await db.collection('users').doc(String(data.assigneeUid)).collection('notifications').add({
+      type: 'pin-task',
+      title: `${data.type === 'issue' ? '⚠ Issue' : '📌 New task'} on the drawing`,
+      body: `${String(data.instruction ?? '').slice(0, 140)} — ${projSnap.data()?.name ?? 'site'}`,
+      projectId: event.params.projectId,
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    logger.info(`Pin task notification → ${data.assigneeUid}`);
+  },
+);
+
 export const onDeficiencyCreated = onDocumentCreated(
   'projects/{projectId}/deficiencies/{defId}',
   async (event) => {

@@ -95,7 +95,7 @@ export default function AdminUsers() {
     const assigned = (u.projectIds ?? []).includes(p.id);
     try {
       if (assigned) await removeFromProject(u.uid, p.id);
-      else await assignToProject(u.uid, p.id, me.uid);
+      else await assignToProject(u.uid, p.id, me.uid, u.displayName);
       await load();
     } catch (err: any) {
       notify('Assignment failed', err.message);
