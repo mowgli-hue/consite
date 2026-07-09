@@ -13,9 +13,9 @@
  * in Resend (then switch RECORDS_FROM below to e.g. records@consitehq.com).
  */
 
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, type DocumentReference } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { logger } from 'firebase-functions';
 import PDFDocument from 'pdfkit';
@@ -36,9 +36,40 @@ export const onSubmissionRecord = onDocumentCreated(
   },
   async (event) => {
     const sub = event.data?.data() as AnyMap | undefined;
-    if (!sub) return;
+    if (!sub || !event.data) return;
     const { projectId, subId } = event.params;
+    await processSubmission(sub, event.data.ref, projectId, subId, '');
+  },
+);
 
+/**
+ * End-of-Day answers get merged into the morning submission at clock-out —
+ * when that happens, regenerate the PDF and re-send the now-complete record.
+ */
+export const onSubmissionEndOfDay = onDocumentUpdated(
+  {
+    document: 'projects/{projectId}/submissions/{subId}',
+    secrets: [RESEND_API_KEY, RECORDS_EMAIL],
+    memory: '512MiB',
+    timeoutSeconds: 120,
+  },
+  async (event) => {
+    const before = event.data?.before.data() as AnyMap | undefined;
+    const after = event.data?.after.data() as AnyMap | undefined;
+    if (!before || !after || !event.data) return;
+    if (before.endOfDayAt || !after.endOfDayAt) return; // only on End-of-Day completion
+    const { projectId, subId } = event.params;
+    await processSubmission(after, event.data.after.ref, projectId, subId, ' — End of Day complete');
+  },
+);
+
+async function processSubmission(
+  sub: AnyMap,
+  ref: DocumentReference,
+  projectId: string,
+  subId: string,
+  subjectSuffix: string,
+) {
     const db = getFirestore();
     const bucket = getStorage().bucket();
 
@@ -72,8 +103,8 @@ export const onSubmissionRecord = onDocumentCreated(
         const pdf = await fillFlhaTemplate({ values: values as Record<string, unknown>, dateStr, submittedBy: personName });
         const pdfPath = `projects/${projectId}/submissions/${subId}/record.pdf`;
         await bucket.file(pdfPath).save(pdf, { contentType: 'application/pdf' });
-        await event.data?.ref.update({ pdfStoragePath: pdfPath });
-        await emailRecord({ pdf, category, projectName, dateStr, personName, formTitle });
+        await ref.update({ pdfStoragePath: pdfPath });
+        await emailRecord({ pdf, category, projectName, dateStr, personName, formTitle, subjectSuffix });
         return;
       } catch (err) {
         logger.error('MHSA template fill failed — falling back to generic renderer', err);
@@ -164,19 +195,19 @@ export const onSubmissionRecord = onDocumentCreated(
     // ── Store the PDF ─────────────────────────────────
     const pdfPath = `projects/${projectId}/submissions/${subId}/record.pdf`;
     await bucket.file(pdfPath).save(pdf, { contentType: 'application/pdf' });
-    await event.data?.ref.update({ pdfStoragePath: pdfPath });
+    await ref.update({ pdfStoragePath: pdfPath });
 
     // ── Email it ──────────────────────────────────────
-    await emailRecord({ pdf, category, projectName, dateStr, personName, formTitle });
-  },
-);
+    await emailRecord({ pdf, category, projectName, dateStr, personName, formTitle, subjectSuffix });
+}
 
 async function emailRecord(opts: {
   pdf: Buffer; category: string; projectName: string;
   dateStr: string; personName: string; formTitle: string;
+  subjectSuffix?: string;
 }) {
-  const { pdf, category, projectName, dateStr, personName, formTitle } = opts;
-  const subject = `${category} · ${projectName} · ${dateStr} · ${personName}`;
+  const { pdf, category, projectName, dateStr, personName, formTitle, subjectSuffix } = opts;
+  const subject = `${category} · ${projectName} · ${dateStr} · ${personName}${subjectSuffix ?? ''}`;
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {

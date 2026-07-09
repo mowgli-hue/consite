@@ -125,7 +125,15 @@ export default function ClockScreen() {
         actorUid: user.uid,
         workerUid: openShift.uid,
       });
-      notify('Clocked out', 'See you next shift.');
+      // End-of-Day questions live at clock-out, not in the morning form.
+      const proj = projects.find((p) => p.id === openShift.projectId);
+      const flhaId = proj?.defaultFlhaFormId ?? 'flha-daily-v1';
+      confirm(
+        'Clocked out ✓',
+        'Quick end-of-day check: cleanup, incidents — 30 seconds.',
+        () => router.push(`/forms/${flhaId}?projectId=${openShift.projectId}&phase=checkout` as any),
+        'Finish the day',
+      );
       await load();
     } catch (err: any) {
       notify('Clock-out failed', err.message ?? 'Please try again.');

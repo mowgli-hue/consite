@@ -92,8 +92,14 @@ service cloud.firestore {
                        ));
         allow create: if hasProjectPerm(pid, 'worker.forms.submit') &&
                          request.resource.data.submittedBy == request.auth.uid;
-        // PDF path is appended server-side by Cloud Function
-        allow update: if isAdmin();
+        // PDF path is appended server-side by Cloud Function.
+        // Owner may update their own submission same-day only (End of Day
+        // answers at clock-out) — schemaId and submittedBy must not change.
+        allow update: if isAdmin() ||
+                         (resource.data.submittedBy == request.auth.uid &&
+                          request.resource.data.submittedBy == resource.data.submittedBy &&
+                          request.resource.data.schemaId == resource.data.schemaId &&
+                          request.time.toMillis() - resource.data.submittedAt.toMillis() < 24 * 60 * 60 * 1000);
         allow delete: if isAdmin();
       }
 

@@ -14,7 +14,7 @@
  * between feeling magical and feeling slow.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
-import { addDoc, collection, doc, getDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  addDoc, collection, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where,
+} from 'firebase/firestore';
 
 import { db } from '../../../src/lib/firebase';
 import { useAuth } from '../../../src/contexts/AuthContext';
@@ -42,11 +44,14 @@ import type { FormSchema, FormValues } from '../../../src/types';
 type Phase = 'loading' | 'filling' | 'voice-prompt' | 'voice-filling' | 'review' | 'submitting' | 'done';
 
 export default function FormFillScreen() {
-  const { formId, projectId } = useLocalSearchParams<{
+  const { formId, projectId, phase: routePhase } = useLocalSearchParams<{
     formId: string;
     projectId?: string;
+    /** 'checkout' renders only End-of-Day sections and updates today's submission. */
+    phase?: string;
   }>();
   const { user } = useAuth();
+  const isCheckout = routePhase === 'checkout';
 
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [values, setValues] = useState<FormValues>({});
@@ -70,6 +75,12 @@ export default function FormFillScreen() {
         }
         const loaded: FormSchema = { id: snap.id, ...(snap.data() as Omit<FormSchema, 'id'>) };
         setSchema(loaded);
+
+        // Checkout mode: 4 quick questions — no AI pass, no voice, straight in.
+        if (routePhase === 'checkout') {
+          setPhase('review');
+          return;
+        }
 
         // First AI pass — pre-fill from context only (no voice yet)
         setPhase('filling');
@@ -141,16 +152,25 @@ export default function FormFillScreen() {
     setAiFilledKeys(new Set());
   }
 
+  // Which sections this mode shows: check-in hides checkout sections; checkout shows only them.
+  const displaySchema = useMemo<FormSchema | null>(() => {
+    if (!schema) return null;
+    const sections = schema.sections.filter((s) =>
+      isCheckout ? s.phase === 'checkout' : s.phase !== 'checkout',
+    );
+    return { ...schema, sections };
+  }, [schema, isCheckout]);
+
   // ─── Submit ───────────────────────────────────────────────────────────
 
   async function handleSubmit() {
-    if (!schema || !user || !projectId) {
+    if (!schema || !displaySchema || !user || !projectId) {
       Alert.alert('Missing context', 'No project selected for this form.');
       return;
     }
 
     const missing: string[] = [];
-    for (const section of schema.sections) {
+    for (const section of displaySchema.sections) {
       for (const field of section.fields) {
         if ('required' in field && field.required) {
           const v = values[field.id];
@@ -167,6 +187,48 @@ export default function FormFillScreen() {
 
     setPhase('submitting');
     try {
+      // Checkout mode: merge the End-of-Day answers into TODAY's submission
+      // of this form (created at clock-in), instead of creating a new one.
+      if (isCheckout) {
+        const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+        const snap = await getDocs(query(
+          collection(db, 'projects', projectId, 'submissions'),
+          where('submittedBy', '==', user.uid),
+        ));
+        const today = snap.docs
+          .filter((d) => {
+            const data = d.data() as any;
+            const ms = data.submittedAt?.toMillis ? data.submittedAt.toMillis() : 0;
+            return data.schemaId === schema.id && ms >= dayStart.getTime();
+          })
+          .sort((a, b) => ((b.data() as any).submittedAt?.toMillis?.() ?? 0) - ((a.data() as any).submittedAt?.toMillis?.() ?? 0))[0];
+
+        if (today) {
+          const patch: Record<string, unknown> = { endOfDayAt: serverTimestamp() };
+          for (const [k, v] of Object.entries(values)) {
+            if (v !== undefined) patch[`values.${k}`] = v;
+          }
+          await updateDoc(today.ref, patch);
+        } else {
+          // No morning FLHA found — record End of Day standalone rather than lose it.
+          await addDoc(collection(db, 'projects', projectId, 'submissions'), {
+            schemaId: schema.id,
+            schemaVersion: schema.version,
+            projectId,
+            values,
+            submittedBy: user.uid,
+            submittedAt: serverTimestamp(),
+            endOfDayAt: serverTimestamp(),
+            aiAssisted: false,
+            voiceTranscript: null,
+          });
+        }
+        setPhase('done');
+        Alert.alert('End of day recorded', 'Have a good one.');
+        router.back();
+        return;
+      }
+
       const submission = {
         schemaId: schema.id,
         schemaVersion: schema.version,
@@ -278,7 +340,7 @@ export default function FormFillScreen() {
           )}
 
           <FormRenderer
-            schema={schema}
+            schema={displaySchema ?? schema}
             values={values}
             onChange={setValues}
             aiFilledKeys={aiFilledKeys}
@@ -299,7 +361,7 @@ export default function FormFillScreen() {
             {phase === 'submitting' ? (
               <ActivityIndicator color={colors.textInverse} />
             ) : (
-              <Text style={styles.submitText}>Submit form</Text>
+              <Text style={styles.submitText}>{isCheckout ? 'Finish the day' : 'Submit form'}</Text>
             )}
           </Pressable>
         </ScrollView>

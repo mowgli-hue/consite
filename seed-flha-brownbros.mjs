@@ -71,7 +71,7 @@ const SCHEMA = {
     'One per site per day, completed by the foreman before work begins. ' +
     'All affected worksite parties must sign off before work can begin.',
   category: 'flha',
-  version: 1,
+  version: 2,
   archived: false,
   createdBy: 'SEED:mhsa-template',
   createdAt: Date.now(),
@@ -153,6 +153,7 @@ const SCHEMA = {
     {
       id: 'end-of-day',
       title: 'End of Day',
+      phase: 'checkout', // hidden at clock-in; prompted at clock-out
       description: 'Complete before leaving site.',
       fields: [
         { id: 'cleanup', type: 'dropdown', label: 'Was the work area cleaned up / materials stored and disposed of properly?', options: YES_NO },

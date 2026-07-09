@@ -80,6 +80,8 @@ export interface FormSection {
   id: string;
   title: string;
   description?: string;
+  /** 'checkout' sections are hidden at clock-in and shown at clock-out (End of Day). */
+  phase?: 'checkin' | 'checkout';
   fields: FormField[];
 }
 
