@@ -12,15 +12,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { collection, doc, getDocs, query, updateDoc } from 'firebase/firestore';
+import { getDownloadURL, ref } from 'firebase/storage';
 
-import { db } from '../../src/lib/firebase';
+import { db, storage } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useT, type Lang } from '../../src/contexts/I18nContext';
 import { notify } from '../../src/lib/notify';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
 type CertSummary = { total: number; expiringSoon: number; expired: number };
-type SafetyDoc = { id: string; title: string; url?: string };
+type SafetyDoc = { id: string; title: string; url?: string; storagePath?: string };
 
 export default function WorkerProfile() {
   const { user } = useAuth();
@@ -62,6 +63,7 @@ export default function WorkerProfile() {
           id: d.id,
           title: (d.data().title ?? d.data().name ?? d.id) as string,
           url: d.data().url as string | undefined,
+          storagePath: d.data().storagePath as string | undefined,
         })));
       } catch { setDocs([]); }
     })();
@@ -187,11 +189,17 @@ export default function WorkerProfile() {
             <Pressable
               key={d.id}
               style={styles.rowCard}
-              onPress={() => d.url ? Linking.openURL(d.url) : notify(d.title, 'No document link attached yet — ask the office.')}
+              onPress={async () => {
+                try {
+                  const url = d.url ?? (d.storagePath ? await getDownloadURL(ref(storage, d.storagePath)) : null);
+                  if (url) Linking.openURL(url);
+                  else notify(d.title, 'No document attached yet — ask the office.');
+                } catch (err: any) { notify('Could not open', err.message); }
+              }}
             >
               <Feather name="file-text" size={20} color={colors.primary} />
               <Text style={[styles.rowTitle, { flex: 1 }]}>{d.title}</Text>
-              <Feather name={d.url ? 'external-link' : 'chevron-right'} size={16} color={colors.textTertiary} />
+              <Feather name={(d.url || d.storagePath) ? 'external-link' : 'chevron-right'} size={16} color={colors.textTertiary} />
             </Pressable>
           ))
         )}
