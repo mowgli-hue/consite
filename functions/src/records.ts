@@ -82,20 +82,29 @@ export const onSubmissionRecord = onDocumentCreated(
     doc.moveTo(40, doc.y).lineTo(572, doc.y).strokeColor('#999').stroke();
     doc.moveDown(0.5);
 
+    const isEmpty = (v: unknown) =>
+      v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+
     const sections = (schema?.sections ?? []) as Array<AnyMap>;
     for (const section of sections) {
+      const fields = ((section.fields ?? []) as Array<AnyMap>).filter((f) => !isEmpty(values[String(f.id)]));
+      if (fields.length === 0) continue; // don't print bare headers for untouched sections
+
+      if (doc.y > 680) doc.addPage();
       doc.fontSize(12).font('Helvetica-Bold').fillColor('#1a3b5d').text(String(section.title ?? ''));
       doc.moveDown(0.2);
       doc.fillColor('black');
 
-      for (const field of (section.fields ?? []) as Array<AnyMap>) {
+      for (const field of fields) {
         const id = String(field.id);
         const label = String(field.label ?? id);
         const type = String(field.type);
         const v = values[id];
-        if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) continue;
 
         if (type === 'signature' && typeof v === 'string') {
+          // Signature block is ~80pt tall — break the page first if it won't fit,
+          // then anchor the image explicitly under its label.
+          if (doc.y > 640) doc.addPage();
           doc.fontSize(9).font('Helvetica-Bold').text(label + ':');
           try {
             let bytes: Buffer;
@@ -105,7 +114,9 @@ export const onSubmissionRecord = onDocumentCreated(
             } else {
               [bytes] = (await bucket.file(v).download()) as unknown as [Buffer];
             }
-            doc.image(bytes, { fit: [180, 60] });
+            const imgY = doc.y + 4;
+            doc.image(bytes, 60, imgY, { fit: [180, 55] });
+            doc.y = imgY + 62;
           } catch {
             doc.fontSize(9).font('Helvetica-Oblique').text('  [signed — image unavailable]');
           }
