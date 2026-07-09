@@ -66,6 +66,21 @@ export async function analyzeReceipt(opts: { imageBase64: string; imageMediaType
   return res.data;
 }
 
+export interface WorkLogResult {
+  summary: string;
+  trade: string;
+  location: string;
+  quantities: string;
+  flags: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export async function analyzeWork(opts: { imageBase64: string; imageMediaType: 'image/jpeg' | 'image/png' | 'image/webp'; voiceTranscript?: string }): Promise<WorkLogResult> {
+  const fn = httpsCallable<typeof opts, WorkLogResult>(functions, 'aiAnalyzeWork');
+  const res = await fn(opts);
+  return res.data;
+}
+
 export interface DailyLogResult {
   log: string;
   summary: string;

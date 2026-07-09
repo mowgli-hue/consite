@@ -36,6 +36,7 @@ import {
   DEFICIENCY_SYSTEM_PROMPT,
   RECEIPT_OCR_SYSTEM_PROMPT,
   DAILY_LOG_SYSTEM_PROMPT,
+  WORKLOG_SYSTEM_PROMPT,
 } from './ai-prompts';
 import { buildContext } from './context';
 import type { FormSchema, FormValues } from './shared-types';
@@ -229,6 +230,65 @@ export const aiAnalyzeDeficiency = onCall<AnalyzeDeficiencyRequest, Promise<Anal
     });
 
     const parsed = parseJsonResponse<AnalyzeDeficiencyResponse>(extractText(resp));
+    if (!parsed) throw new HttpsError('internal', 'AI response was not valid JSON.');
+    return parsed;
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// aiAnalyzeWork — progress photo + voice → structured work-log entry
+// ─────────────────────────────────────────────────────────────────────────
+
+interface AnalyzeWorkRequest {
+  imageBase64: string;
+  imageMediaType: 'image/jpeg' | 'image/png' | 'image/webp';
+  voiceTranscript?: string;
+}
+
+interface AnalyzeWorkResponse {
+  summary: string;
+  trade: string;
+  location: string;
+  quantities: string;
+  flags: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export const aiAnalyzeWork = onCall<AnalyzeWorkRequest, Promise<AnalyzeWorkResponse>>(
+  { secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 30 },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const { imageBase64, imageMediaType, voiceTranscript } = request.data;
+    if (!imageBase64) {
+      throw new HttpsError('invalid-argument', 'imageBase64 required.');
+    }
+
+    const resp = await getClient().messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: 500,
+      system: WORKLOG_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: imageMediaType, data: imageBase64 },
+            },
+            {
+              type: 'text',
+              text: voiceTranscript
+                ? `Worker said: "${voiceTranscript}"\n\nProduce the work-log entry.`
+                : 'Produce the work-log entry from the photo alone.',
+            },
+          ],
+        },
+      ],
+    });
+
+    const parsed = parseJsonResponse<AnalyzeWorkResponse>(extractText(resp));
     if (!parsed) throw new HttpsError('internal', 'AI response was not valid JSON.');
     return parsed;
   }

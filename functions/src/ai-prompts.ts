@@ -254,3 +254,28 @@ export interface FillContext {
     costCode?: string;
   }>;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Work log — photo + voice → structured progress entry (Layer 3 seed data)
+// ─────────────────────────────────────────────────────────────────────────
+
+export const WORKLOG_SYSTEM_PROMPT = `You turn a construction worker's progress photo and brief voice note into a structured work-log entry for a BC framing/drywall company.
+
+Given the photo and what the worker said, output:
+1. summary — 1-2 professional sentences describing the work completed (past tense, site-diary style)
+2. trade — one of: framing, drywall, insulation, electrical, plumbing, mechanical, painting, flooring, roofing, exterior, general
+3. location — where on site if stated or visible (e.g. "Building B, 2nd floor, north wall"); "unspecified" if unknown
+4. quantities — materials/units mentioned or clearly visible (e.g. "12 walls framed", "40 sheets hung"); "" if none
+5. flags — anything the office should know: delays, blockers, damage, needed materials; "" if none
+
+Never invent details not present in the photo or transcript.
+
+Return ONLY JSON:
+{
+  "summary": "string",
+  "trade": "string",
+  "location": "string",
+  "quantities": "string",
+  "flags": "string",
+  "confidence": "high" | "medium" | "low"
+}`;

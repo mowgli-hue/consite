@@ -20,6 +20,7 @@ type Module = { id: string; label: string; icon: any; subtitle: string; route?: 
 
 const TODAY_MODULES: Module[] = [
   { id: 'inbox', label: 'Inbox', icon: 'bell', subtitle: 'Site alerts & reports', route: '/(admin)/inbox' },
+  { id: 'timeline', label: 'Site Timeline', icon: 'image', subtitle: 'Live work updates & photos', route: '/(admin)/timeline' },
   { id: 'reports', label: 'Hours & Reports', icon: 'bar-chart-2', subtitle: 'Attendance & payroll CSV', route: '/(admin)/reports' },
 ];
 

@@ -119,6 +119,17 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
+      // Work log — members post their own entries; foremen/admin can amend.
+      match /workLog/{entryId} {
+        allow read: if isAdmin() || isProjectMember(pid);
+        allow create: if isProjectMember(pid) &&
+                         request.resource.data.uid == request.auth.uid;
+        allow update: if isAdmin() ||
+                         hasProjectPerm(pid, 'supervisor.forms.approve') ||
+                         resource.data.uid == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
       // Deficiencies (punch list) — any project member can report; admins
       // and supervisors can update status/resolve.
       match /deficiencies/{defId} {

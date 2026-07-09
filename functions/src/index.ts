@@ -29,5 +29,6 @@ export {
   aiExtractHazards,
   aiAnalyzeDeficiency,
   aiAnalyzeReceipt,
+  aiAnalyzeWork,
   aiGenerateDailyLog,
 } from './ai-fill';
