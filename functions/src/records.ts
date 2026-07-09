@@ -51,7 +51,14 @@ export const onSubmissionRecord = onDocumentCreated(
     const schema = schemaSnap.data() as AnyMap | undefined;
     const personName = userSnap.data()?.displayName ?? String(sub.submittedBy ?? 'Unknown');
     const values = (sub.values ?? {}) as AnyMap;
-    const dateStr = new Date(Number(sub.submittedAt) || Date.now()).toLocaleDateString('en-CA');
+    // submittedAt is a Firestore Timestamp (serverTimestamp()) — use toMillis;
+    // fall back for plain numbers or missing values.
+    const tsRaw = sub.submittedAt as { toMillis?: () => number } | number | undefined;
+    const submittedMs =
+      typeof tsRaw === 'object' && tsRaw?.toMillis ? tsRaw.toMillis()
+      : typeof tsRaw === 'number' ? tsRaw
+      : Date.now();
+    const dateStr = new Date(submittedMs).toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
     const formTitle = String(schema?.title ?? sub.schemaId ?? 'Form');
     const category = String(schema?.category ?? 'form').toUpperCase();
 
