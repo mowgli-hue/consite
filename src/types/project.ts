@@ -25,6 +25,8 @@ export interface Project {
   geofenceEnabled: boolean;
   /** If true, project is shown in worker lists. */
   active: boolean;
+  /** Which FLHA schema this site uses for the daily assessment. */
+  defaultFlhaFormId?: string;
   /** Workers assigned to this project (cached for fast queries). */
   memberUids: string[];
   /** Supervisors for this project. */

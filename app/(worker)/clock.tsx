@@ -104,7 +104,7 @@ export default function ClockScreen() {
         'Clocked in ✓',
         (distance != null ? `You're ${distance}m from site center. ` : '') +
           'Complete your FLHA for today?',
-        () => router.push(`/forms/flha-daily-v1?projectId=${project.id}` as any),
+        () => router.push(`/forms/${project.defaultFlhaFormId ?? 'flha-daily-v1'}?projectId=${project.id}` as any),
         'Start FLHA',
       );
       await load();
