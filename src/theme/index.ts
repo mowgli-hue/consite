@@ -6,37 +6,37 @@
  */
 
 export const colors = {
-  // Surface
-  background: '#F7F8FA',
+  // Surface — warm neutrals (job-site dust, not office gray)
+  background: '#FAF9F7',
   surface: '#FFFFFF',
-  surfaceAlt: '#F1F3F6',
+  surfaceAlt: '#F4F2EF',
 
-  // Text
-  text: '#111827',
-  textSecondary: '#6B7280',
-  textTertiary: '#9CA3AF',
+  // Text — warm charcoal
+  text: '#1C1917',
+  textSecondary: '#78716C',
+  textTertiary: '#A8A29E',
   textInverse: '#FFFFFF',
 
   // Borders / dividers
-  border: '#E5E7EB',
-  borderStrong: '#D1D5DB',
+  border: '#E7E5E4',
+  borderStrong: '#D6D3D1',
 
-  // Brand — swap this for Jungle Labs green or a project-specific brand color
-  primary: '#2563EB',
-  primaryDark: '#1D4ED8',
-  primarySoft: '#DBEAFE',
+  // Brand — Consite high-vis safety orange
+  primary: '#EA580C',
+  primaryDark: '#C2410C',
+  primarySoft: '#FFEDD5',
 
-  // Semantic
-  success: '#10B981',
-  successSoft: '#D1FAE5',
-  warning: '#F59E0B',
-  warningSoft: '#FEF3C7',
-  danger: '#EF4444',
+  // Semantic — caution-tape yellow for warnings (distinct from brand orange)
+  success: '#16A34A',
+  successSoft: '#DCFCE7',
+  warning: '#CA8A04',
+  warningSoft: '#FEF9C3',
+  danger: '#DC2626',
   dangerSoft: '#FEE2E2',
 
   // Misc
-  overlay: 'rgba(17, 24, 39, 0.5)',
-  shadow: 'rgba(17, 24, 39, 0.08)',
+  overlay: 'rgba(28, 25, 23, 0.5)',
+  shadow: 'rgba(28, 25, 23, 0.08)',
 } as const;
 
 export const spacing = {

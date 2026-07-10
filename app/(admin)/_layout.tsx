@@ -12,6 +12,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Users', icon: 'users', route: '/users' },
   { label: 'Clients', icon: 'phone', route: '/clients' },
   { label: 'Projects', icon: 'briefcase', route: '/projects' },
+  { label: 'Forms & Documents', icon: 'folder', route: '/library' },
   { label: 'Compliance', icon: 'shield', route: '/compliance' },
 ];
 
