@@ -81,11 +81,15 @@ export default function SearchScreen() {
       const subs = await getDocs(query(collection(db, 'projects', projectId, 'submissions'), orderBy('submittedAt', 'desc'), limit(400)));
       for (const d of subs.docs) {
         const a = d.data() as any;
-        const valuesText = Object.values(a.values ?? {}).filter((v) => typeof v === 'string').join(' ');
+        // Skip signature data-URLs and other binary noise — words only.
+        const valuesText = Object.values(a.values ?? {})
+          .flatMap((v) => (Array.isArray(v) ? v : [v]))
+          .filter((v): v is string => typeof v === 'string' && !v.startsWith('data:') && v.length < 400)
+          .join(' ');
         items.push({
           id: d.id, type: 'form', ms: tsToMs(a.submittedAt) ?? 0,
           text: `${a.schemaId ?? ''} ${valuesText}`,
-          display: `${String(a.schemaId ?? 'form')} — ${valuesText.slice(0, 140)}`,
+          display: `${String(a.schemaId ?? 'form')} — ${valuesText.slice(0, 140) || 'signed form'}`,
         });
       }
     } catch { /* skip */ }

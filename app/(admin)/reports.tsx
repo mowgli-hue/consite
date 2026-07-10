@@ -16,6 +16,8 @@ import { getDownloadURL, ref } from 'firebase/storage';
 import { Linking } from 'react-native';
 
 import { db, functions, storage } from '../../src/lib/firebase';
+import { useAuth } from '../../src/contexts/AuthContext';
+import { approveShift } from '../../src/lib/attendance';
 import { notify } from '../../src/lib/notify';
 import { listUsers, listAllProjects } from '../../src/lib/adminUsers';
 import { tsToMs } from '../../src/lib/attendance';
@@ -35,6 +37,7 @@ const RANGES = [
 ] as const;
 
 export default function AdminReports() {
+  const { user: me } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -42,6 +45,20 @@ export default function AdminReports() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [packBusy, setPackBusy] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
+  async function officeApprove(r: Row) {
+    if (!me || !projectId) return;
+    setApprovingId(r.id);
+    try {
+      await approveShift({ projectId, recordId: r.id, approverUid: me.uid });
+      setRows((list) => list.map((x) => (x.id === r.id ? { ...x, status: 'approved' } : x)));
+    } catch (err: any) {
+      notify('Approve failed', err.message);
+    } finally {
+      setApprovingId(null);
+    }
+  }
 
   async function exportAuditPack() {
     if (!projectId) return;
@@ -224,6 +241,17 @@ export default function AdminReports() {
                     </Text>
                   )}
                 </View>
+                {!r.open && r.status !== 'approved' && me?.role === 'admin' && (
+                  <Pressable
+                    style={[styles.approveBtn, approvingId === r.id && { opacity: 0.5 }]}
+                    disabled={approvingId === r.id}
+                    onPress={() => officeApprove(r)}
+                  >
+                    {approvingId === r.id
+                      ? <ActivityIndicator color={colors.textInverse} size="small" />
+                      : <Feather name="check" size={16} color={colors.textInverse} />}
+                  </Pressable>
+                )}
               </View>
             ))}
           </>
@@ -280,4 +308,8 @@ const styles = StyleSheet.create({
   entrySub: { color: colors.textSecondary, fontSize: typography.sizes.sm, marginTop: 1 },
   entryHours: { fontWeight: typography.weights.bold, color: colors.text },
   statusTag: { fontSize: typography.sizes.xs, marginTop: 2 },
+  approveBtn: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: colors.success,
+    alignItems: 'center', justifyContent: 'center', marginLeft: spacing.sm,
+  },
 });
