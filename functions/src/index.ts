@@ -18,7 +18,7 @@ export { createWorker } from './admin';
 export { onAttendanceCreated, onSubmissionCreated } from './triggers';
 
 // Notifications (admin inbox + worker alerts)
-export { onDeficiencyCreated, missedClockoutSweep, onWorkerAssigned, onPinAssigned } from './notifications';
+export { onDeficiencyCreated, missedClockoutSweep, onWorkerAssigned, onPinAssigned, onPhaseCompleted } from './notifications';
 
 // Records pipeline (submission → PDF → email; End-of-Day update re-sends)
 export { onSubmissionRecord, onSubmissionEndOfDay } from './records';

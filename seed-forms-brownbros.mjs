@@ -97,8 +97,49 @@ const ENV_SCHEMA = {
   ],
 };
 
+
+const TOOLBOX_SCHEMA = {
+  id: 'toolbox-talk-v1',
+  title: 'Toolbox Talk',
+  description: 'Quick crew safety talk — AI drafts the key points from the topic; crew signs on the foreman\u2019s phone. Auto-recorded and emailed like every form.',
+  category: 'toolbox',
+  version: 1,
+  archived: false,
+  createdBy: 'SEED:brownbros',
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  sections: [
+    {
+      id: 'talk',
+      title: 'The Talk',
+      fields: [
+        { id: 'topic', type: 'dropdown', label: 'Topic', required: true, allowOther: true,
+          options: ['Working at heights / fall protection', 'Ladder safety', 'Housekeeping & trip hazards', 'Power tool safety', 'Nail gun safety', 'Scaffolding', 'Material handling & lifting', 'Heat stress / cold stress', 'Silica dust & respiratory', 'Electrical awareness', 'Emergency procedures & muster', 'WHMIS refresher'] },
+        { id: 'key-points', type: 'multiline', label: 'Key points covered', rows: 4, required: true,
+          helperText: 'Tap the mic \u2014 say the topic and AI drafts the points; edit as needed.' },
+        { id: 'site-specific', type: 'multiline', label: 'Site-specific hazards discussed today', rows: 2 },
+      ],
+    },
+    {
+      id: 'signoff',
+      title: 'Crew Sign-off',
+      fields: [
+        { id: 'crew-name-1', type: 'text', label: 'Crew member 1 \u2014 name' },
+        { id: 'crew-sig-1', type: 'signature', label: 'Crew member 1 \u2014 signature' },
+        { id: 'crew-name-2', type: 'text', label: 'Crew member 2 \u2014 name' },
+        { id: 'crew-sig-2', type: 'signature', label: 'Crew member 2 \u2014 signature' },
+        { id: 'crew-name-3', type: 'text', label: 'Crew member 3 \u2014 name' },
+        { id: 'crew-sig-3', type: 'signature', label: 'Crew member 3 \u2014 signature' },
+        { id: 'crew-name-4', type: 'text', label: 'Crew member 4 \u2014 name' },
+        { id: 'crew-sig-4', type: 'signature', label: 'Crew member 4 \u2014 signature' },
+        { id: 'foreman-sig', type: 'signature', label: 'Foreman signature', required: true },
+      ],
+    },
+  ],
+};
+
 async function main() {
-  for (const schema of [QC_SCHEMA, ENV_SCHEMA]) {
+  for (const schema of [QC_SCHEMA, ENV_SCHEMA, TOOLBOX_SCHEMA]) {
     console.log(`Seeding forms/${schema.id} …`);
     await db.doc(`forms/${schema.id}`).set(schema);
   }

@@ -12,7 +12,7 @@
  *      >14h, flags them for review, posts a digest to the inbox.
  */
 
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
@@ -128,6 +128,49 @@ export const onWorkerAssigned = onDocumentCreated(
       `You've been added to a new site: ${p.name}${p.address ? ` — ${p.address}` : ''}. Open Consite to clock in and see details.`,
     );
     logger.info(`Worker ${event.params.uid} notified: assigned to ${p.name}`);
+  },
+);
+
+/**
+ * Phase completed → everyone knows automatically: office inbox entry +
+ * in-app notice to every crew member (WhatsApp rides along when enabled).
+ */
+export const onPhaseCompleted = onDocumentUpdated(
+  { document: 'projects/{projectId}/phases/{phaseId}', secrets: WHATSAPP_SECRETS },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!before || !after) return;
+    if (before.status === 'done' || after.status !== 'done') return;
+
+    const db = getFirestore();
+    const projSnap = await db.collection('projects').doc(event.params.projectId).get();
+    const p = projSnap.data();
+    const projectName = p?.name ?? 'site';
+
+    await pushNotification({
+      type: 'system',
+      title: `Phase complete: ${after.name}`,
+      body: `${projectName}${after.invoiceMilestone ? ' · 💰 INVOICE MILESTONE — time to bill' : ''}`,
+      urgent: after.invoiceMilestone === true,
+      projectId: event.params.projectId,
+      projectName,
+    });
+
+    const memberUids: string[] = p?.memberUids ?? [];
+    await Promise.all(memberUids.map(async (uid) => {
+      await db.collection('users').doc(uid).collection('notifications').add({
+        type: 'phase',
+        title: `✅ ${after.name} complete`,
+        body: `${projectName} moves ahead — check My Tasks for what's next.`,
+        projectId: event.params.projectId,
+        read: false,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      const u = await db.collection('users').doc(uid).get();
+      await sendWhatsApp(u.data()?.phone, `${projectName}: phase "${after.name}" is complete. Check Consite for what's next.`);
+    }));
+    logger.info(`Phase complete notifications: ${after.name} @ ${projectName}`);
   },
 );
 

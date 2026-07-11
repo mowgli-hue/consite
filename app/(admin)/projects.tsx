@@ -61,15 +61,19 @@ export default function AdminProjects() {
           )}
 
           {projects.map((p) => (
-            <Pressable key={p.id} style={styles.card} onPress={() => setEditing(p)}>
+            <Pressable key={p.id} style={styles.card} onPress={() => router.push(`/project?id=${p.id}` as any)}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{p.name}{!p.active && <Text style={styles.inactive}>  · INACTIVE</Text>}</Text>
                 <Text style={styles.sub}>{p.address}</Text>
                 <Text style={styles.sub}>
-                  {p.geofenceEnabled ? `Geofence ${p.geofence.radiusM}m` : 'Geofence off'} · {p.memberUids?.length ?? 0} workers
+                  Stage: {(p.stage ?? 'contract').toUpperCase()} · {p.memberUids?.length ?? 0} workers
+                  {p.clientName ? ` · ${p.clientName}` : ''}
                 </Text>
               </View>
-              <Feather name="edit-2" size={16} color={colors.textTertiary} />
+              <Pressable hitSlop={10} onPress={() => setEditing(p)}>
+                <Feather name="edit-2" size={16} color={colors.textTertiary} />
+              </Pressable>
+              <Feather name="chevron-right" size={18} color={colors.textTertiary} />
             </Pressable>
           ))}
         </ScrollView>

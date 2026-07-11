@@ -72,6 +72,15 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
 
+      // Build phases (lifecycle) — crew sees them; foremen advance/complete;
+      // admin manages.
+      match /phases/{phaseId} {
+        allow read: if isStaff() || isProjectMember(pid);
+        allow create, delete: if isAdmin();
+        allow update: if isAdmin() ||
+                         hasProjectPerm(pid, 'supervisor.forms.approve');
+      }
+
       // Plans — view requires project access; foremen and admin upload.
       match /plans/{planId} {
         allow read: if isProjectMember(pid) || isStaff();

@@ -27,6 +27,16 @@ export interface Project {
   active: boolean;
   /** Which FLHA schema this site uses for the daily assessment. */
   defaultFlhaFormId?: string;
+  /** Lifecycle stage — see src/lib/lifecycle.ts. Defaults to 'contract'. */
+  stage?: 'contract' | 'setup' | 'crew' | 'build' | 'punch' | 'closeout' | 'archived';
+  /** CRM link. */
+  clientId?: string;
+  clientName?: string;
+  /** Signed contract PDF in Storage. */
+  contractPath?: string;
+  contractValue?: number;
+  /** Set when the closeout audit pack is generated. */
+  auditAt?: number;
   /** Workers assigned to this project (cached for fast queries). */
   memberUids: string[];
   /** Supervisors for this project. */
