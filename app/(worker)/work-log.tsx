@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { ref, uploadString } from 'firebase/storage';
 
@@ -48,18 +47,14 @@ export default function WorkLogScreen() {
       return;
     }
     const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({ quality: 0.6 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 });
+      ? await ImagePicker.launchCameraAsync({ quality: 0.5, base64: true })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.5, base64: true });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     setImageUri(asset.uri);
-    try {
-      const b64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
-      setImageBase64(b64);
-      setPhase('voice');
-    } catch {
-      notify('Photo error', 'Could not process the photo. Try again.');
-    }
+    if (!asset.base64) { notify('Photo error', 'Could not read the photo. Try again.'); return; }
+    setImageBase64(asset.base64);
+    setPhase('voice');
   }
 
   async function runAnalysis(t: string) {

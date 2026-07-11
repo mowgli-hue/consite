@@ -14,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { ref, uploadString } from 'firebase/storage';
 
@@ -48,20 +47,31 @@ export default function ScanScreen() {
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') { notify('Permission needed', 'Camera access required.'); return; }
+    // base64:true → the picker hands us the data directly. No file-system
+    // round-trip, works identically on phones and web.
     const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({ quality: 0.6 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.6 });
+      ? await ImagePicker.launchCameraAsync({ quality: 0.5, base64: true })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.5, base64: true });
     if (result.canceled || !result.assets[0]) return;
-    setImageUri(result.assets[0].uri);
+    const asset = result.assets[0];
+    setImageUri(asset.uri);
     setPhase('scanning');
     try {
-      const b64 = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      const b64 = asset.base64;
+      if (!b64) throw new Error('Could not read the photo from the camera — try again.');
+      if (b64.length > 4_800_000) throw new Error('Photo too large for analysis — try again (it will auto-compress).');
       setImageBase64(b64);
       const r = await scanPhoto({ imageBase64: b64, imageMediaType: 'image/jpeg' });
       setScan(r);
       setPhase('result');
     } catch (err: any) {
-      notify('Scan failed', err.message ?? 'Try again.');
+      const msg = String(err?.message ?? '');
+      notify(
+        'Scan failed',
+        msg.includes('not-found') || msg.includes('NOT_FOUND')
+          ? 'The AI scan service isn’t deployed yet — run: firebase deploy --only functions'
+          : msg || 'Try again.',
+      );
       setPhase('capture');
     }
   }
