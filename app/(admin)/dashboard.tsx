@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { collection, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
+import ProjectPortfolio from '../../src/components/ProjectPortfolio';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
 type Module = { id: string; label: string; icon: any; subtitle: string; route?: string };
@@ -43,6 +44,7 @@ export default function AdminDashboard() {
   const [onSiteNow, setOnSiteNow] = useState<number | null>(null);
   const [activeProjects, setActiveProjects] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [portfolioKey, setPortfolioKey] = useState(0);
 
   useEffect(() => {
     const q = query(collection(db, 'notifications'), where('read', '==', false));
@@ -73,6 +75,7 @@ export default function AdminDashboard() {
 
   async function onRefresh() {
     setRefreshing(true);
+    setPortfolioKey((k) => k + 1);
     await loadStats();
     setRefreshing(false);
   }
@@ -107,6 +110,9 @@ export default function AdminDashboard() {
             <Text style={styles.statLabel}>Active sites</Text>
           </Pressable>
         </View>
+
+        <Text style={styles.sectionLabel}>Jobs at a glance</Text>
+        <ProjectPortfolio reloadKey={portfolioKey} />
 
         <Section title="Today" modules={TODAY_MODULES} unread={unread} />
         <Section title="Manage" modules={MANAGE_MODULES} unread={unread} />
