@@ -28,6 +28,7 @@ const TODAY_MODULES: Module[] = [
 ];
 
 const MANAGE_MODULES: Module[] = [
+  { id: 'crew', label: 'Crew Board', icon: 'columns', subtitle: 'Who’s on which site', route: '/(admin)/crew' },
   { id: 'users', label: 'Users', icon: 'users', subtitle: 'Workers & accounts', route: '/(admin)/users' },
   { id: 'clients', label: 'Clients', icon: 'phone', subtitle: 'CRM & comm records', route: '/(admin)/clients' },
   { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Sites & geofences', route: '/(admin)/projects' },

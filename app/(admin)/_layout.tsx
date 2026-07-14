@@ -10,6 +10,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Site Timeline', icon: 'image', route: '/timeline' },
   { label: 'Money', icon: 'dollar-sign', route: '/money' },
   { label: 'Hours & Reports', icon: 'bar-chart-2', route: '/reports' },
+  { label: 'Crew Board', icon: 'columns', route: '/crew' },
   { label: 'Users', icon: 'users', route: '/users' },
   { label: 'Clients', icon: 'phone', route: '/clients' },
   { label: 'Projects', icon: 'briefcase', route: '/projects' },
