@@ -23,6 +23,7 @@ const TODAY_MODULES: Module[] = [
   { id: 'search', label: 'Search', icon: 'search', subtitle: 'Ask your project anything', route: '/(admin)/search' },
   { id: 'inbox', label: 'Inbox', icon: 'bell', subtitle: 'Site alerts & reports', route: '/(admin)/inbox' },
   { id: 'timeline', label: 'Site Timeline', icon: 'image', subtitle: 'Live work updates & photos', route: '/(admin)/timeline' },
+  { id: 'money', label: 'Money', icon: 'dollar-sign', subtitle: 'Invoice queue & milestones', route: '/(admin)/money' },
   { id: 'reports', label: 'Hours & Reports', icon: 'bar-chart-2', subtitle: 'Attendance & payroll CSV', route: '/(admin)/reports' },
 ];
 

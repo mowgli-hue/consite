@@ -8,6 +8,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Search', icon: 'search', route: '/search' },
   { label: 'Inbox', icon: 'bell', route: '/inbox' },
   { label: 'Site Timeline', icon: 'image', route: '/timeline' },
+  { label: 'Money', icon: 'dollar-sign', route: '/money' },
   { label: 'Hours & Reports', icon: 'bar-chart-2', route: '/reports' },
   { label: 'Users', icon: 'users', route: '/users' },
   { label: 'Clients', icon: 'phone', route: '/clients' },

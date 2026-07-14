@@ -42,6 +42,9 @@ export interface Phase {
   invoiceMilestone?: boolean;
   completedAt?: number;
   completedBy?: string;
+  /** Money view: set when the office marks this 💰 milestone invoiced. */
+  invoicedAt?: number | null;
+  invoicedBy?: string | null;
 }
 
 /** Trade template packs — house framing first; more trades = more entries. */
