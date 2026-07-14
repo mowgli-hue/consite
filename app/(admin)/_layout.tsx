@@ -15,7 +15,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Clients', icon: 'phone', route: '/clients' },
   { label: 'Projects', icon: 'briefcase', route: '/projects' },
   { label: 'Forms & Documents', icon: 'folder', route: '/library' },
-  { label: 'Compliance', icon: 'shield', route: '/compliance' },
+  { label: 'Safety Center', icon: 'shield', route: '/safety' },
+  { label: 'Compliance', icon: 'award', route: '/compliance' },
 ];
 
 export default function AdminLayout() {

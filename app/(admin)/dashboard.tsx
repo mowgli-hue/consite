@@ -33,7 +33,8 @@ const MANAGE_MODULES: Module[] = [
   { id: 'clients', label: 'Clients', icon: 'phone', subtitle: 'CRM & comm records', route: '/(admin)/clients' },
   { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Sites & geofences', route: '/(admin)/projects' },
   { id: 'library', label: 'Forms & Documents', icon: 'folder', subtitle: 'Company forms & safety docs', route: '/(admin)/library' },
-  { id: 'compliance', label: 'Compliance', icon: 'shield', subtitle: 'Cert expiries', route: '/(admin)/compliance' },
+  { id: 'safety', label: 'Safety Center', icon: 'shield', subtitle: 'FLHA rates & deficiencies', route: '/(admin)/safety' },
+  { id: 'compliance', label: 'Compliance', icon: 'award', subtitle: 'Cert expiries', route: '/(admin)/compliance' },
 ];
 
 const SOON_MODULES: Module[] = [
