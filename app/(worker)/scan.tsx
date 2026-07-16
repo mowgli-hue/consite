@@ -19,11 +19,15 @@ import { ref, uploadString } from 'firebase/storage';
 
 import { db, storage } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { useT } from '../../src/contexts/I18nContext';
 import { scanPhoto, type ScanResult } from '../../src/lib/ai';
 import { notify } from '../../src/lib/notify';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
 type Phase = 'capture' | 'scanning' | 'result' | 'saving' | 'done';
+
+/** Where the photo will be filed. The AI proposes; the worker can change it. */
+type Dest = 'safety' | 'materials' | 'progress';
 
 const KIND_META = {
   progress: { icon: 'trending-up' as const, label: 'Work progress', color: colors.success },
@@ -32,15 +36,41 @@ const KIND_META = {
   other: { icon: 'camera' as const, label: 'Photo', color: colors.textSecondary },
 };
 
+/** Mirror of the filing logic: what the AI result files as by default. */
+function defaultDest(scan: ScanResult): Dest {
+  if (scan.kind === 'safety' || (scan.kind === 'other' && scan.safetyIssues.length > 0)) return 'safety';
+  if (scan.kind === 'materials') return 'materials';
+  return 'progress';
+}
+
+const DEST_META: Record<Dest, {
+  chip: string; button: string; explain: string; icon: keyof typeof Feather.glyphMap;
+}> = {
+  safety: {
+    chip: 'Safety issue', button: 'File as safety issue',
+    explain: 'Files to the punch list — the office gets an alert.', icon: 'alert-triangle',
+  },
+  materials: {
+    chip: 'Materials', button: 'Save material count',
+    explain: 'Saves to the project’s material counts.', icon: 'package',
+  },
+  progress: {
+    chip: 'Timeline', button: 'Post to timeline',
+    explain: 'Posts to the site timeline for the office.', icon: 'trending-up',
+  },
+};
+
 export default function ScanScreen() {
   const { projectId: pidParam } = useLocalSearchParams<{ projectId?: string }>();
   const { user } = useAuth();
+  const { t } = useT();
   const projectId = pidParam && pidParam !== 'sample-project-1' ? pidParam : user?.projectIds?.[0];
 
   const [phase, setPhase] = useState<Phase>('capture');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [scan, setScan] = useState<ScanResult | null>(null);
+  const [dest, setDest] = useState<Dest>('progress');
 
   async function shoot(fromCamera: boolean) {
     const perm = fromCamera
@@ -63,6 +93,7 @@ export default function ScanScreen() {
       setImageBase64(b64);
       const r = await scanPhoto({ imageBase64: b64, imageMediaType: 'image/jpeg' });
       setScan(r);
+      setDest(defaultDest(r)); // AI proposes; the worker can change it below
       setPhase('result');
     } catch (err: any) {
       const msg = String(err?.message ?? '');
@@ -86,7 +117,7 @@ export default function ScanScreen() {
     if (!scan || !user || !projectId || !imageBase64) return;
     setPhase('saving');
     try {
-      if (scan.kind === 'safety' || scan.safetyIssues.length > 0 && scan.kind === 'other') {
+      if (dest === 'safety') {
         // → deficiency (punch list + office alert via existing trigger)
         await addDoc(collection(db, 'projects', projectId, 'deficiencies'), {
           title: scan.safetyIssues[0] ?? scan.summary.slice(0, 80),
@@ -102,7 +133,7 @@ export default function ScanScreen() {
           reportedAt: serverTimestamp(),
           aiAssisted: true,
         });
-      } else if (scan.kind === 'materials') {
+      } else if (dest === 'materials') {
         // → material count
         await addDoc(collection(db, 'projects', projectId, 'materialCounts'), {
           items: scan.materials,
@@ -153,20 +184,28 @@ export default function ScanScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {phase === 'capture' && (
+        {phase === 'capture' && !projectId && (
+          <View style={styles.center}>
+            <View style={styles.bigIcon}><Feather name="briefcase" size={44} color={colors.textTertiary} /></View>
+            <Text style={styles.bigText}>{t('No projects assigned')}</Text>
+            <Text style={styles.subText}>{t('Ask your admin to add you to a project.')}</Text>
+          </View>
+        )}
+
+        {phase === 'capture' && !!projectId && (
           <View style={styles.center}>
             <View style={styles.bigIcon}><Feather name="camera" size={44} color={colors.primary} /></View>
-            <Text style={styles.bigText}>Point. Shoot. Done.</Text>
+            <Text style={styles.bigText}>{t('Point. Shoot. Done.')}</Text>
             <Text style={styles.subText}>
               Work progress, a pile of lumber, a hazard — the AI figures out what it's
               looking at and files it in the right place.
             </Text>
             <Pressable style={styles.primaryBtn} onPress={() => shoot(true)}>
               <Feather name="camera" size={18} color={colors.textInverse} />
-              <Text style={styles.primaryBtnText}>Scan</Text>
+              <Text style={styles.primaryBtnText}>{t('Scan')}</Text>
             </Pressable>
             <Pressable style={styles.secondaryBtn} onPress={() => shoot(false)}>
-              <Text style={styles.secondaryBtnText}>Choose from library</Text>
+              <Text style={styles.secondaryBtnText}>{t('Choose from library')}</Text>
             </Pressable>
           </View>
         )}
@@ -175,7 +214,7 @@ export default function ScanScreen() {
           <View style={styles.center}>
             {imageUri && <Image source={{ uri: imageUri }} style={styles.photo} resizeMode="cover" />}
             <ActivityIndicator color={colors.primary} size="large" />
-            <Text style={styles.subText}>{phase === 'scanning' ? 'AI is reading the photo…' : 'Filing it…'}</Text>
+            <Text style={styles.subText}>{phase === 'scanning' ? t('AI is reading the photo…') : t('Filing it…')}</Text>
           </View>
         )}
 
@@ -214,14 +253,31 @@ export default function ScanScreen() {
               </View>
             )}
 
+            {/* Where it goes — AI's pick, one tap to change. App computes, worker confirms. */}
+            <Text style={styles.destPrompt}>{t('Wrong category? Tap to change:')}</Text>
+            <View style={styles.destRow}>
+              {(Object.keys(DEST_META) as Dest[]).map((d) => {
+                const on = dest === d;
+                return (
+                  <Pressable
+                    key={d}
+                    style={[styles.destChip, on && styles.destChipOn]}
+                    onPress={() => setDest(d)}
+                  >
+                    <Feather name={DEST_META[d].icon} size={13} color={on ? colors.textInverse : colors.textSecondary} />
+                    <Text style={[styles.destChipText, on && styles.destChipTextOn]}>{t(DEST_META[d].chip)}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.destExplain}>{t(DEST_META[dest].explain)}</Text>
+
             <Pressable style={styles.primaryBtn} onPress={fileIt}>
               <Feather name="check" size={18} color={colors.textInverse} />
-              <Text style={styles.primaryBtnText}>
-                {scan.kind === 'safety' ? 'File as safety issue' : scan.kind === 'materials' ? 'Save material count' : 'Post to timeline'}
-              </Text>
+              <Text style={styles.primaryBtnText}>{t(DEST_META[dest].button)}</Text>
             </Pressable>
             <Pressable style={styles.secondaryBtn} onPress={() => setPhase('capture')}>
-              <Text style={styles.secondaryBtnText}>Rescan</Text>
+              <Text style={styles.secondaryBtnText}>{t('Rescan')}</Text>
             </Pressable>
           </View>
         )}
@@ -229,7 +285,7 @@ export default function ScanScreen() {
         {phase === 'done' && (
           <View style={styles.center}>
             <Feather name="check-circle" size={48} color={colors.success} />
-            <Text style={styles.bigText}>Filed.</Text>
+            <Text style={styles.bigText}>{t('Filed.')}</Text>
           </View>
         )}
       </ScrollView>
@@ -271,6 +327,18 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontWeight: typography.weights.bold, color: colors.text, marginBottom: spacing.xs },
   cardLine: { color: colors.text, fontSize: typography.sizes.sm, lineHeight: 21 },
+
+  destPrompt: { marginTop: spacing.lg, color: colors.textSecondary, fontSize: typography.sizes.xs },
+  destRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+  destChip: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radii.pill,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.md, backgroundColor: colors.surface,
+  },
+  destChipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  destChipText: { fontSize: typography.sizes.sm, color: colors.textSecondary, fontWeight: typography.weights.medium },
+  destChipTextOn: { color: colors.textInverse, fontWeight: typography.weights.semibold },
+  destExplain: { marginTop: spacing.sm, fontSize: typography.sizes.xs, color: colors.textTertiary },
 
   primaryBtn: {
     marginTop: spacing.xl, backgroundColor: colors.primary, borderRadius: radii.lg,

@@ -34,20 +34,35 @@ import type { DashboardModule } from '../../src/types';
 const DEFAULT_MODULES: DashboardModule[] = [
   { id: 'clock', label: 'Clock In / Out', icon: 'clock', route: '/clock', order: 1, visible: true, requiredPermissions: [], subtitle: 'GPS-verified' },
   { id: 'forms', label: 'FLHA Forms', icon: 'shield', route: '/forms/flha-daily-v1?projectId=sample-project-1', order: 2, visible: true, requiredPermissions: [], subtitle: 'AI auto-filled' },
-  { id: 'scan', label: 'AI Scan', icon: 'image', route: '/scan', order: 1, visible: true, requiredPermissions: [], subtitle: 'Point, shoot, filed' },
-  { id: 'work-log', label: 'Work Update', icon: 'image', route: '/work-log?projectId=sample-project-1', order: 2, visible: true, requiredPermissions: [], subtitle: 'Photo + voice → done' },
-  { id: 'tasks', label: 'My Tasks', icon: 'clipboard', route: '/tasks', order: 2, visible: true, requiredPermissions: [], subtitle: 'Pinned work for you' },
-  { id: 'drawings', label: 'Site Drawings', icon: 'file-text', route: '/drawings?projectId=sample-project-1', order: 6, visible: true, requiredPermissions: [], subtitle: 'Plans & pin-tasks' },
-  { id: 'crew', label: 'Crew Hours', icon: 'users', route: '/crew', order: 3, visible: true, requiredPermissions: [], subtitle: 'Approve crew shifts' },
-  { id: 'deficiency', label: 'Report Issue', icon: 'image', route: '/deficiency?projectId=sample-project-1', order: 3, visible: true, requiredPermissions: [], subtitle: 'Photo + voice' },
-  { id: 'receipt', label: 'Scan Receipt', icon: 'file-text', route: '/receipt?projectId=sample-project-1', order: 4, visible: true, requiredPermissions: [], subtitle: 'To job cost' },
-  { id: 'daily-log', label: 'Daily Log', icon: 'clipboard', route: '/daily-log?projectId=sample-project-1', order: 5, visible: true, requiredPermissions: [], subtitle: 'AI-written' },
-  { id: 'forms-browser', label: 'Forms', icon: 'clipboard', route: '/forms', order: 5, visible: true, requiredPermissions: [], subtitle: 'QC, environmental & more' },
-  { id: 'punch-list', label: 'Punch List', icon: 'bar-chart', route: '/punch-list?projectId=sample-project-1', order: 6, visible: true, requiredPermissions: [], subtitle: 'Open issues' },
-  { id: 'certs', label: 'My Tickets', icon: 'shield', route: '/certifications', order: 7, visible: true, requiredPermissions: [], subtitle: 'WHMIS, fall arrest' },
-  { id: 'projects', label: 'Projects', icon: 'briefcase', route: '/projects', order: 8, visible: true, requiredPermissions: [] },
-  { id: 'profile', label: 'My Profile', icon: 'user', route: '/profile', order: 9, visible: true, requiredPermissions: [], subtitle: 'WCB, tickets & safety docs' },
+  { id: 'scan', label: 'AI Scan', icon: 'image', route: '/scan', order: 3, visible: true, requiredPermissions: [], subtitle: 'Point, shoot, filed' },
+  { id: 'work-log', label: 'Work Update', icon: 'image', route: '/work-log?projectId=sample-project-1', order: 4, visible: true, requiredPermissions: [], subtitle: 'Photo + voice → done' },
+  { id: 'deficiency', label: 'Report Issue', icon: 'image', route: '/deficiency?projectId=sample-project-1', order: 5, visible: true, requiredPermissions: [], subtitle: 'Photo + voice' },
+  { id: 'receipt', label: 'Scan Receipt', icon: 'file-text', route: '/receipt?projectId=sample-project-1', order: 6, visible: true, requiredPermissions: [], subtitle: 'To job cost' },
+  { id: 'tasks', label: 'My Tasks', icon: 'clipboard', route: '/tasks', order: 7, visible: true, requiredPermissions: [], subtitle: 'Pinned work for you' },
+  { id: 'drawings', label: 'Site Drawings', icon: 'file-text', route: '/drawings?projectId=sample-project-1', order: 8, visible: true, requiredPermissions: [], subtitle: 'Plans & pin-tasks' },
+  { id: 'punch-list', label: 'Punch List', icon: 'bar-chart', route: '/punch-list?projectId=sample-project-1', order: 9, visible: true, requiredPermissions: [], subtitle: 'Open issues' },
+  { id: 'daily-log', label: 'Daily Log', icon: 'clipboard', route: '/daily-log?projectId=sample-project-1', order: 10, visible: true, requiredPermissions: [], subtitle: 'AI-written' },
+  { id: 'forms-browser', label: 'Forms', icon: 'clipboard', route: '/forms', order: 11, visible: true, requiredPermissions: [], subtitle: 'QC, environmental & more' },
+  { id: 'crew', label: 'Crew Hours', icon: 'users', route: '/crew', order: 12, visible: true, requiredPermissions: [], subtitle: 'Approve crew shifts' },
+  { id: 'timesheet', label: 'My Hours', icon: 'clock', route: '/timesheet', order: 13, visible: true, requiredPermissions: [], subtitle: 'This week’s shifts & totals' },
+  { id: 'certs', label: 'My Tickets', icon: 'shield', route: '/certifications', order: 14, visible: true, requiredPermissions: [], subtitle: 'WHMIS, fall arrest' },
+  { id: 'projects', label: 'Projects', icon: 'briefcase', route: '/projects', order: 15, visible: true, requiredPermissions: [] },
+  { id: 'profile', label: 'My Profile', icon: 'user', route: '/profile', order: 16, visible: true, requiredPermissions: [], subtitle: 'WCB, tickets & safety docs' },
 ];
+
+/**
+ * Section per module id — one glance tells the worker where to look:
+ * start the day, point the camera, do the work, check your own stuff.
+ * Modules added from Firestore without a known id land in "More".
+ */
+const SECTION_OF: Record<string, string> = {
+  clock: 'Start your day', forms: 'Start your day',
+  scan: 'Camera', 'work-log': 'Camera', deficiency: 'Camera', receipt: 'Camera',
+  tasks: 'My work', drawings: 'My work', 'punch-list': 'My work',
+  'daily-log': 'My work', 'forms-browser': 'My work', crew: 'My work',
+  timesheet: 'Me', certs: 'Me', projects: 'Me', profile: 'Me',
+};
+const SECTION_ORDER = ['Start your day', 'Camera', 'My work', 'Me', 'More'];
 
 type WorkerNotice = { id: string; title: string; body?: string };
 
@@ -155,27 +170,36 @@ export default function WorkerDashboard() {
           </View>
         ))}
 
-        <View style={styles.grid}>
-          {modules.map((m) => (
-            <Pressable
-              key={m.id}
-              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-              onPress={() => {
-                // Routes were seeded against the sample project — point them
-                // at the worker's real first assignment instead.
-                const pid = user?.projectIds?.[0];
-                const route = pid ? m.route.replace('sample-project-1', pid) : m.route;
-                router.push(route as any);
-              }}
-            >
-              <View style={[styles.iconWrap, { backgroundColor: m.color ?? colors.primarySoft }]}>
-                <Feather name={iconFor(m.icon)} size={22} color={m.color ? '#fff' : colors.primary} />
+        {SECTION_ORDER.map((section) => {
+          const inSection = modules.filter((m) => (SECTION_OF[m.id] ?? 'More') === section);
+          if (inSection.length === 0) return null;
+          return (
+            <View key={section}>
+              <Text style={styles.sectionLabel}>{t(section)}</Text>
+              <View style={styles.grid}>
+                {inSection.map((m) => (
+                  <Pressable
+                    key={m.id}
+                    style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+                    onPress={() => {
+                      // Routes were seeded against the sample project — point them
+                      // at the worker's real first assignment instead.
+                      const pid = user?.projectIds?.[0];
+                      const route = pid ? m.route.replace('sample-project-1', pid) : m.route;
+                      router.push(route as any);
+                    }}
+                  >
+                    <View style={[styles.iconWrap, { backgroundColor: m.color ?? colors.primarySoft }]}>
+                      <Feather name={iconFor(m.icon)} size={22} color={m.color ? '#fff' : colors.primary} />
+                    </View>
+                    <Text style={styles.cardLabel}>{t(m.label)}</Text>
+                    {m.subtitle && <Text style={styles.cardSubtitle}>{t(m.subtitle)}</Text>}
+                  </Pressable>
+                ))}
               </View>
-              <Text style={styles.cardLabel}>{t(m.label)}</Text>
-              {m.subtitle && <Text style={styles.cardSubtitle}>{t(m.subtitle)}</Text>}
-            </Pressable>
-          ))}
-        </View>
+            </View>
+          );
+        })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -220,6 +244,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
+  },
+  sectionLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   notice: {
     flexDirection: 'row',
