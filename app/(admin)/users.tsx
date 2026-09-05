@@ -173,6 +173,13 @@ export default function AdminUsers() {
                               style={[styles.roleChip, u.role === r && styles.roleChipOn]}
                               onPress={() => {
                                 if (u.role === r) return;
+                                // Last-admin guard: never let the company end
+                                // up with zero active admins (console-only recovery).
+                                const activeAdmins = users.filter((x) => x.role === 'admin' && x.active);
+                                if (u.role === 'admin' && r !== 'admin' && activeAdmins.length <= 1) {
+                                  notify('Blocked', `${u.displayName} is the only active admin — promote someone else first.`);
+                                  return;
+                                }
                                 confirm(
                                   `Make ${u.displayName} ${r === 'admin' ? 'an admin' : `a ${r}`}?`,
                                   r === 'admin'
@@ -201,11 +208,18 @@ export default function AdminUsers() {
                       <Text style={styles.detailLabel}>Active</Text>
                       <Switch
                         value={u.active}
-                        onValueChange={() =>
-                          u.active
-                            ? confirm('Deactivate user?', `${u.displayName} will no longer be able to sign in features.`, () => toggleActive(u), 'Deactivate')
-                            : toggleActive(u)
-                        }
+                        onValueChange={() => {
+                          if (u.active && u.role === 'admin' &&
+                              users.filter((x) => x.role === 'admin' && x.active).length <= 1) {
+                            notify('Blocked', `${u.displayName} is the only active admin — promote someone else first.`);
+                            return;
+                          }
+                          if (u.active) {
+                            confirm('Deactivate user?', `${u.displayName} will no longer be able to sign in.`, () => toggleActive(u), 'Deactivate');
+                          } else {
+                            toggleActive(u);
+                          }
+                        }}
                         disabled={u.uid === me?.uid}
                       />
                     </View>

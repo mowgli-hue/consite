@@ -82,6 +82,18 @@ const PA: Record<string, string> = {
   'Clocked out': 'ਛੁੱਟੀ ਹੋ ਗਈ',
   'See you next shift.': 'ਅਗਲੀ ਸ਼ਿਫਟ ਤੇ ਮਿਲਾਂਗੇ।',
   'Cannot clock in': 'ਹਾਜ਼ਰੀ ਨਹੀਂ ਲੱਗੀ',
+  'Clocked in ✓': 'ਹਾਜ਼ਰੀ ਲੱਗ ਗਈ ✓',
+  'Clocked in ✓ (offline — will sync)': 'ਹਾਜ਼ਰੀ ਲੱਗ ਗਈ ✓ (ਨੈੱਟ ਨਹੀਂ — ਬਾਅਦ ਵਿੱਚ ਭੇਜਾਂਗੇ)',
+  'Clocked out ✓': 'ਛੁੱਟੀ ਹੋ ਗਈ ✓',
+  'Clocked out ✓ (offline — will sync)': 'ਛੁੱਟੀ ਹੋ ਗਈ ✓ (ਨੈੱਟ ਨਹੀਂ — ਬਾਅਦ ਵਿੱਚ ਭੇਜਾਂਗੇ)',
+  'Now do your FLHA — it takes a minute.': 'ਹੁਣ ਆਪਣਾ FLHA ਭਰੋ — ਇੱਕ ਮਿੰਟ ਲੱਗਦਾ ਹੈ।',
+  'Last step: quick end-of-day check — 30 seconds.': 'ਆਖਰੀ ਕੰਮ: ਦਿਨ ਦੇ ਅੰਤ ਦੀ ਜਾਂਚ — 30 ਸਕਿੰਟ।',
+  'FLHA not done today — tap to do it now': 'ਅੱਜ ਦਾ FLHA ਨਹੀਂ ਹੋਇਆ — ਹੁਣੇ ਕਰਨ ਲਈ ਦਬਾਓ',
+  // My Hours
+  'approved for pay': 'ਤਨਖਾਹ ਲਈ ਮਨਜ਼ੂਰ',
+  'waiting for approval': 'ਮਨਜ਼ੂਰੀ ਦੀ ਉਡੀਕ ਵਿੱਚ',
+  'approved': 'ਮਨਜ਼ੂਰ',
+  'pending': 'ਬਾਕੀ',
   // Profile
   'Language': 'ਭਾਸ਼ਾ',
   'Safety ID': 'ਸੇਫਟੀ ID',

@@ -29,8 +29,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadString } from 'firebase/storage';
 
-import { db } from '../../src/lib/firebase';
+import { db, storage } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { analyzeReceipt } from '../../src/lib/ai';
 import { AIFilledBanner } from '../../src/components/AIFilledBanner';
@@ -56,6 +57,7 @@ export default function ReceiptScreen() {
 
   const [phase, setPhase] = useState<Phase>('capture');
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptResult | null>(null);
   const [costCode, setCostCode] = useState<string>('');
 
@@ -86,6 +88,7 @@ export default function ReceiptScreen() {
       const b64 = await FileSystem.readAsStringAsync(asset.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+      setImageBase64(b64); // kept for the Storage upload at save
       const r = await analyzeReceipt({
         imageBase64: b64,
         imageMediaType: 'image/jpeg',
@@ -103,9 +106,17 @@ export default function ReceiptScreen() {
     if (!receipt || !user || !projectId) return;
     setPhase('submitting');
     try {
+      // Upload the receipt image — job-cost records need the actual
+      // receipt attached, not a path on somebody's phone.
+      let photoPath: string | null = null;
+      if (imageBase64) {
+        photoPath = `projects/${projectId}/media/receipt-${Date.now()}/photo.jpg`;
+        await uploadString(ref(storage, photoPath), imageBase64, 'base64', { contentType: 'image/jpeg' });
+      }
       await addDoc(collection(db, 'projects', projectId, 'expenses'), {
         ...receipt,
-        photoUri: imageUri, // v0.3 uploads to Storage
+        photoPath,
+        photoUri: photoPath ? null : imageUri,
         costCode: costCode || null,
         recordedBy: user.uid,
         recordedAt: serverTimestamp(),

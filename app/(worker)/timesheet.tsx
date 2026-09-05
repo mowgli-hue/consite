@@ -8,15 +8,19 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { tsToMs } from '../../src/lib/attendance';
+import { paidHours, tsToMs } from '../../src/lib/attendance';
 import { notify } from '../../src/lib/notify';
+import { useT } from '../../src/contexts/I18nContext';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
-type Shift = { id: string; projectName: string; inMs: number; outMs?: number; hours?: number };
+type Shift = {
+  id: string; projectName: string; inMs: number; outMs?: number; hours?: number;
+  status?: string; manualEntry?: boolean; needsReview?: boolean; breakMinutes?: number;
+};
 
 function weekStartMs(): number {
   const d = new Date();
@@ -27,6 +31,7 @@ function weekStartMs(): number {
 
 export default function Timesheet() {
   const { user } = useAuth();
+  const { t } = useT();
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastWeek, setLastWeek] = useState(false);
@@ -39,6 +44,11 @@ export default function Timesheet() {
       const end = lastWeek ? weekStartMs() : Date.now() + 86_400_000;
       const out: Shift[] = [];
       for (const pid of user.projectIds ?? []) {
+        let projectName = pid;
+        try {
+          const p = await getDoc(doc(db, 'projects', pid));
+          projectName = (p.data() as { name?: string } | undefined)?.name ?? pid;
+        } catch { /* keep id */ }
         const snap = await getDocs(query(
           collection(db, 'projects', pid, 'attendance'),
           where('uid', '==', user.uid),
@@ -50,9 +60,13 @@ export default function Timesheet() {
           const outMs = tsToMs(a.clockOutAt);
           out.push({
             id: d.id,
-            projectName: pid,
+            projectName,
             inMs, outMs,
-            hours: outMs ? (outMs - inMs) / 3_600_000 : undefined,
+            // Same paid-hours math as the foreman and payroll screens —
+            // breaks deduct here too, so the numbers always agree.
+            hours: outMs ? paidHours(inMs, outMs, a.breakMinutes) : undefined,
+            status: a.status, manualEntry: a.manualEntry === true,
+            needsReview: a.needsReview === true, breakMinutes: a.breakMinutes,
           });
         }
       }
@@ -67,7 +81,10 @@ export default function Timesheet() {
 
   useEffect(() => { load(); }, [load]);
 
-  const total = shifts.reduce((s, x) => s + (x.hours ?? 0), 0);
+  // Approved vs pending is THE distinction on a pay screen — one gross
+  // number caused paycheque arguments the app exists to prevent.
+  const approved = shifts.filter((s) => s.status === 'approved').reduce((sum, x) => sum + (x.hours ?? 0), 0);
+  const pending = shifts.filter((s) => s.status !== 'approved' && !!s.outMs).reduce((sum, x) => sum + (x.hours ?? 0), 0);
   const open = shifts.filter((s) => !s.outMs).length;
 
   return (
@@ -94,8 +111,10 @@ export default function Timesheet() {
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.totalCard}>
-            <Text style={styles.totalHours}>{total.toFixed(1)}h</Text>
+            <Text style={styles.totalHours}>{approved.toFixed(1)}h</Text>
+            <Text style={styles.totalApprovedLabel}>{t('approved for pay')}</Text>
             <Text style={styles.totalSub}>
+              {pending > 0 ? `+ ${pending.toFixed(1)}h ${t('waiting for approval')} · ` : ''}
               {shifts.length} shift{shifts.length === 1 ? '' : 's'}
               {open > 0 ? ` · ${open} still open` : ''}
             </Text>
@@ -108,13 +127,26 @@ export default function Timesheet() {
                   {new Date(s.inMs).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
                 </Text>
                 <Text style={styles.rowSub}>
-                  {new Date(s.inMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {s.projectName} · {new Date(s.inMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   {s.outMs ? ` – ${new Date(s.outMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ' – on the clock'}
+                  {s.breakMinutes ? ` · ${s.breakMinutes}min break` : ''}
                 </Text>
+                {(s.manualEntry || s.needsReview) && (
+                  <Text style={styles.rowFlag}>
+                    {s.manualEntry ? '✎ entered by foreman' : '⚠ auto clock-out — being reviewed'}
+                  </Text>
+                )}
               </View>
-              <Text style={[styles.rowHours, !s.outMs && { color: colors.success }]}>
-                {s.hours ? `${s.hours.toFixed(1)}h` : '● LIVE'}
-              </Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[styles.rowHours, !s.outMs && { color: colors.success }]}>
+                  {s.hours ? `${s.hours.toFixed(1)}h` : '● LIVE'}
+                </Text>
+                {!!s.outMs && (
+                  <Text style={[styles.rowStatus, s.status === 'approved' ? { color: colors.success } : { color: colors.warning }]}>
+                    {s.status === 'approved' ? `✓ ${t('approved')}` : t('pending')}
+                  </Text>
+                )}
+              </View>
             </View>
           ))}
 
@@ -154,7 +186,16 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.lg, ...shadows.card,
   },
   totalHours: { fontSize: 40, fontWeight: typography.weights.bold, color: colors.text },
-  totalSub: { color: colors.textSecondary, marginTop: spacing.xs },
+  totalApprovedLabel: {
+    color: colors.success, fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold, marginTop: 2,
+  },
+  totalSub: { color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'center' },
+  rowFlag: {
+    color: colors.warning, fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold, marginTop: 2,
+  },
+  rowStatus: { fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold, marginTop: 2 },
 
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,

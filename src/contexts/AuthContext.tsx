@@ -56,7 +56,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileUnsub = onSnapshot(
         doc(db, 'users', fbUser.uid),
         (snap) => {
-          setUser(snap.exists() ? ({ uid: snap.id, ...(snap.data() as Omit<User, 'uid'>) } as User) : null);
+          const profile = snap.exists() ? ({ uid: snap.id, ...(snap.data() as Omit<User, 'uid'>) } as User) : null;
+          // Deactivation takes effect NOW, not at next sign-in — a fired
+          // account with the app open used to keep full access forever.
+          if (profile && profile.active === false) {
+            libSignOut().catch(() => {});
+            setUser(null);
+            setReady(true);
+            return;
+          }
+          setUser(profile);
           setReady(true);
           setLoading(false);
         },

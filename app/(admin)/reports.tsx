@@ -95,7 +95,10 @@ export default function AdminReports() {
     if (!projectId) return;
     setLoading(true);
     try {
-      const since = Timestamp.fromMillis(Date.now() - rangeDays * 86_400_000);
+      // Calendar days, not a rolling millisecond window — "last 7 days"
+      // run at 9am and at 4pm must produce the same payroll totals.
+      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+      const since = Timestamp.fromMillis(dayStart.getTime() - (rangeDays - 1) * 86_400_000);
       const snap = await getDocs(query(
         collection(db, 'projects', projectId, 'attendance'),
         where('clockInAt', '>=', since),

@@ -17,16 +17,16 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addDoc, collection, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from './firebase';
 
 const KEY = 'consite.offlineQueue.v1';
 
 export interface QueuedOp {
   localId: string;
-  kind: 'add' | 'update';
+  kind: 'add' | 'update' | 'set';
   collectionPath: string;      // for add
-  docPath?: string;            // for update (may contain {localId} of an earlier add)
+  docPath?: string;            // for update/set (update may contain {localId} of an earlier add; set uses a pre-generated real id → idempotent replay)
   data: Record<string, unknown>;
   tsFields: string[];          // ms-number fields to convert to Timestamp at flush
   queuedAt: number;
@@ -108,6 +108,10 @@ export async function flush(): Promise<number> {
               ? { ...later, docPath: later.docPath.replace(op.localId, ref.id) }
               : later
           ))];
+        } else if (op.kind === 'set') {
+          // Pre-generated doc id — overwrites the same doc even if the
+          // original online attempt eventually committed. No duplicates.
+          await withTimeout(setDoc(doc(db, op.docPath!), reviveTimestamps(op.data, op.tsFields)));
         } else {
           // Resolve any {localId} placeholder from an earlier add in this queue
           let path = op.docPath!;

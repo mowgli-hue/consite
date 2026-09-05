@@ -18,7 +18,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
-import { notify, confirm } from '../../src/lib/notify';
+import { notify } from '../../src/lib/notify';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -26,7 +26,9 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   query,
+  Timestamp,
   where,
 } from 'firebase/firestore';
 
@@ -50,6 +52,22 @@ export default function ClockScreen() {
   const [localShift, setLocalShift] = useState<LocalShift | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // null = unknown (couldn't check) — the strip shows unless we KNOW it's done.
+  const [flhaDoneToday, setFlhaDoneToday] = useState<boolean | null>(null);
+
+  async function checkFlhaToday(pid: string, uid: string): Promise<boolean | null> {
+    try {
+      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+      const snap = await getDocs(query(
+        collection(db, 'projects', pid, 'submissions'),
+        where('submittedBy', '==', uid),
+        where('submittedAt', '>=', Timestamp.fromMillis(dayStart.getTime())),
+        limit(25),
+      ));
+      return snap.docs.some((d) =>
+        String((d.data() as { schemaId?: string }).schemaId ?? '').toLowerCase().includes('flha'));
+    } catch { return null; }
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -87,7 +105,10 @@ export default function ClockScreen() {
       // 2. Check for open shift across all assigned projects
       const open = await findOpenShift(user.uid, projectIds);
       setOpenShift(open);
-      if (open) setSelectedId(open.projectId);
+      if (open) {
+        setSelectedId(open.projectId);
+        setFlhaDoneToday(await checkFlhaToday(open.projectId, user.uid));
+      }
     } catch (err) {
       console.warn('Clock screen load failed', err);
     } finally {
@@ -106,16 +127,18 @@ export default function ClockScreen() {
 
     setSubmitting(true);
     try {
-      const result = await clockInWithOfflineFallback({ uid: user.uid, displayName: user.displayName, project });
-      const distance = result.distanceM;
-      // The site paperwork moment: clocked in → do today's FLHA now.
-      confirm(
-        result.offline ? 'Clocked in ✓ (offline — will sync)' : 'Clocked in ✓',
-        (distance != null ? `You're ${distance}m from site center. ` : '') +
-          'Complete your FLHA for today?',
-        () => router.push(`/forms/${project.defaultFlhaFormId ?? 'flha-daily-v1'}?projectId=${project.id}` as any),
-        'Start FLHA',
+      const result = await clockInWithOfflineFallback({
+        uid: user.uid, displayName: user.displayName, project,
+        allProjectIds: user.projectIds,
+      });
+      // The FLHA is a GATE, not a suggestion — clock-in flows straight
+      // into today's hazard assessment. (It used to be a dismissible
+      // popup; crews that tapped Cancel worked all day with no FLHA.)
+      notify(
+        result.offline ? t('Clocked in ✓ (offline — will sync)') : t('Clocked in ✓'),
+        t('Now do your FLHA — it takes a minute.'),
       );
+      router.push(`/forms/${project.defaultFlhaFormId ?? 'flha-daily-v1'}?projectId=${project.id}` as any);
       await load();
     } catch (err: any) {
       notify('Cannot clock in', err.message ?? 'Please try again.');
@@ -141,15 +164,14 @@ export default function ClockScreen() {
           workerUid: openShift.uid,
         });
       }
-      // End-of-Day questions live at clock-out, not in the morning form.
+      // End-of-Day questions live at clock-out — also a gate, not a popup.
       const proj = projects.find((p) => p.id === pid);
       const flhaId = proj?.defaultFlhaFormId ?? 'flha-daily-v1';
-      confirm(
-        localShift ? 'Clocked out ✓ (offline — will sync)' : 'Clocked out ✓',
-        'Quick end-of-day check: cleanup, incidents — 30 seconds.',
-        () => router.push(`/forms/${flhaId}?projectId=${pid}&phase=checkout` as any),
-        'Finish the day',
+      notify(
+        localShift ? t('Clocked out ✓ (offline — will sync)') : t('Clocked out ✓'),
+        t('Last step: quick end-of-day check — 30 seconds.'),
       );
+      router.push(`/forms/${flhaId}?projectId=${pid}&phase=checkout` as any);
       await load();
     } catch (err: any) {
       notify('Clock-out failed', err.message ?? 'Please try again.');
@@ -184,6 +206,7 @@ export default function ClockScreen() {
           project={projects.find((p) => p.id === openShift.projectId)}
           onClockOut={handleClockOut}
           submitting={submitting}
+          flhaDone={flhaDoneToday}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
@@ -244,11 +267,14 @@ function ActiveShift({
   project,
   onClockOut,
   submitting,
+  flhaDone,
 }: {
   openShift: AttendanceRecord;
   project?: Project;
   onClockOut: () => void;
   submitting: boolean;
+  /** true = done · false = NOT done · null/undefined = couldn't verify. */
+  flhaDone?: boolean | null;
 }) {
   const { t } = useT();
   const clockInMs = tsToMs(openShift.clockInAt) ?? Date.now();
@@ -258,6 +284,17 @@ function ActiveShift({
 
   return (
     <View style={styles.activeShift}>
+      {flhaDone !== true && (
+        <Pressable
+          style={styles.flhaStrip}
+          onPress={() => project && router.push(
+            `/forms/${project.defaultFlhaFormId ?? 'flha-daily-v1'}?projectId=${project.id}` as any,
+          )}
+        >
+          <Feather name="alert-triangle" size={16} color={colors.textInverse} />
+          <Text style={styles.flhaStripText}>{t('FLHA not done today — tap to do it now')}</Text>
+        </Pressable>
+      )}
       <View style={styles.statusDot} />
       <Text style={styles.activeLabel}>{t('On the clock')}</Text>
       <Text style={styles.activeProject}>{project?.name ?? 'Project'}</Text>
@@ -388,6 +425,15 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   activeSince: { marginTop: spacing.xs, color: colors.textSecondary },
+  flhaStrip: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    alignSelf: 'stretch', backgroundColor: colors.danger,
+    borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.lg,
+  },
+  flhaStripText: {
+    color: colors.textInverse, fontWeight: typography.weights.bold, fontSize: typography.sizes.sm,
+    flexShrink: 1, textAlign: 'center',
+  },
 
   empty: { alignItems: 'center', padding: spacing['3xl'], gap: spacing.sm },
   emptyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, color: colors.text },

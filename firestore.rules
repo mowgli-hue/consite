@@ -15,18 +15,28 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function userRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return userDoc().role;
+    }
+
+    // Deactivated accounts lose staff powers IMMEDIATELY, not at next
+    // sign-in. (Same-document get() is deduplicated — no extra reads.)
+    function isActiveUser() {
+      return !('active' in userDoc()) || userDoc().active == true;
     }
 
     function isAdmin() {
-      return isSignedIn() && userRole() == 'admin';
+      return isSignedIn() && userRole() == 'admin' && isActiveUser();
     }
 
     // Manager: reads everything, writes nothing. Use isStaff() in READ
     // positions only — never in write positions.
     function isStaff() {
-      return isSignedIn() && (userRole() == 'admin' || userRole() == 'manager');
+      return isSignedIn() && (userRole() == 'admin' || userRole() == 'manager') && isActiveUser();
     }
 
     function isProjectMember(pid) {

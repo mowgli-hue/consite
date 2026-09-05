@@ -28,6 +28,7 @@ import {
   Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useT } from '../contexts/I18nContext';
 import { colors, spacing, radii, typography } from '../theme';
 
 interface Props {
@@ -47,6 +48,7 @@ export function VoiceInput({
   placeholder = 'Tell me about today\'s work…',
   label,
 }: Props) {
+  const { lang } = useT();
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [manualMode, setManualMode] = useState(false);
@@ -111,7 +113,9 @@ export function VoiceInput({
       SpeechRecognition.ExpoSpeechRecognitionModule?.addListener?.('end', endHandler);
 
       await SpeechRecognition.ExpoSpeechRecognitionModule?.start?.({
-        lang: 'en-US',
+        // Match the app language — Punjabi speech through an en-US
+        // recognizer produced garbage transcripts that then fed the AI.
+        lang: lang === 'pa' ? 'pa-IN' : 'en-US',
         interimResults: true,
         continuous: false,
       });

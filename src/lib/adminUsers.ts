@@ -9,7 +9,7 @@
 
 import { httpsCallable } from 'firebase/functions';
 import {
-  collection, doc, getDocs, orderBy, query,
+  collection, doc, getDoc, getDocs, limit, orderBy, query, where,
   updateDoc, setDoc, deleteDoc, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { db, functions } from './firebase';
@@ -99,17 +99,40 @@ export async function assignToProject(uid: string, projectId: string, adminUid: 
 }
 
 export async function removeFromProject(uid: string, projectId: string) {
+  // Never remove someone who is ON THE CLOCK — it orphans the open shift
+  // (they can't clock out, the sweep closes it at 14h+, payroll mess).
+  try {
+    const open = await getDocs(query(
+      collection(db, 'projects', projectId, 'attendance'),
+      where('uid', '==', uid), where('clockOutAt', '==', null), limit(1),
+    ));
+    if (!open.empty) {
+      throw new Error('This worker is clocked in on this site right now — clock them out first (Crew Hours or Reports), then remove them.');
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('clocked in')) throw e;
+    /* attendance unreadable → proceed; rules still protect the data */
+  }
   await deleteDoc(doc(db, 'projects', projectId, 'members', uid));
-  await updateDoc(doc(db, 'projects', projectId), { memberUids: arrayRemove(uid) });
+  await updateDoc(doc(db, 'projects', projectId), {
+    memberUids: arrayRemove(uid),
+    supervisorUids: arrayRemove(uid), // keep the foreman cache honest
+  });
   await updateDoc(doc(db, 'users', uid), { projectIds: arrayRemove(projectId) });
 }
 
 async function addMembership(uid: string, projectId: string, assignedBy: string, displayName?: string) {
-  await setDoc(doc(db, 'projects', projectId, 'members', uid), {
+  // If a member doc already exists, PRESERVE its role and permissions —
+  // a blind overwrite silently demoted foremen back to worker whenever
+  // someone re-toggled an assignment.
+  const memberRef = doc(db, 'projects', projectId, 'members', uid);
+  const existing = await getDoc(memberRef);
+  const prev = existing.exists() ? (existing.data() as { role?: string; permissions?: string[] }) : null;
+  await setDoc(memberRef, {
     uid,
     displayName: displayName ?? null, // lets foremen see crew names (no /users access)
-    role: 'worker',
-    permissions: DEFAULT_WORKER_PERMISSIONS,
+    role: prev?.role ?? 'worker',
+    permissions: prev?.permissions ?? DEFAULT_WORKER_PERMISSIONS,
     assignedAt: Date.now(),
     assignedBy,
   });

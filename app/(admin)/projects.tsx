@@ -20,6 +20,8 @@ import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { Project } from '../../src/types';
 
 export default function AdminProjects() {
+  const { user: me } = useAuth();
+  const isAdmin = me?.role === 'admin';
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Project | 'new' | null>(null);
@@ -44,9 +46,14 @@ export default function AdminProjects() {
           <Feather name="arrow-left" size={22} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Projects</Text>
-        <Pressable hitSlop={8} onPress={() => setEditing(editing ? null : 'new')}>
-          <Feather name={editing ? 'x' : 'plus'} size={24} color={colors.primary} />
-        </Pressable>
+        {/* Managers are view-only — hide controls that rules would reject anyway. */}
+        {isAdmin ? (
+          <Pressable hitSlop={8} onPress={() => setEditing(editing ? null : 'new')}>
+            <Feather name={editing ? 'x' : 'plus'} size={24} color={colors.primary} />
+          </Pressable>
+        ) : (
+          <View style={{ width: 24 }} />
+        )}
       </View>
 
       {loading ? (
@@ -70,9 +77,11 @@ export default function AdminProjects() {
                   {p.clientName ? ` · ${p.clientName}` : ''}
                 </Text>
               </View>
-              <Pressable hitSlop={10} onPress={() => setEditing(p)}>
-                <Feather name="edit-2" size={16} color={colors.textTertiary} />
-              </Pressable>
+              {isAdmin && (
+                <Pressable hitSlop={10} onPress={() => setEditing(p)}>
+                  <Feather name="edit-2" size={16} color={colors.textTertiary} />
+                </Pressable>
+              )}
               <Feather name="chevron-right" size={18} color={colors.textTertiary} />
             </Pressable>
           ))}

@@ -51,6 +51,6 @@ export interface AttendanceRecord {
 export interface ClockInValidationResult {
   ok: boolean;
   distanceM?: number;
-  reason?: 'outside_geofence' | 'location_denied' | 'location_unavailable' | 'project_inactive' | 'already_clocked_in';
+  reason?: 'outside_geofence' | 'location_denied' | 'location_unavailable' | 'project_inactive' | 'already_clocked_in' | 'check_failed';
   message?: string;
 }

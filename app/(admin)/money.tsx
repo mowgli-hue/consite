@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, doc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDocs, orderBy, query, runTransaction, updateDoc } from 'firebase/firestore';
 
 import { db } from '../../src/lib/firebase';
 import { notify, confirm } from '../../src/lib/notify';
@@ -98,13 +98,24 @@ export default function AdminMoney() {
       async () => {
         setBusy(m.phase.id);
         try {
-          await updateDoc(doc(db, 'projects', m.project.id, 'phases', m.phase.id), {
-            invoicedAt: Date.now(),
-            invoicedBy: user?.displayName ?? user?.uid ?? 'office',
+          // Transaction: two admins tapping the same card on a Friday must
+          // not both "invoice" it — the second one gets told, not overwritten.
+          const phaseRef = doc(db, 'projects', m.project.id, 'phases', m.phase.id);
+          await runTransaction(db, async (tx) => {
+            const snap = await tx.get(phaseRef);
+            const cur = snap.data() as { invoicedAt?: number | null; invoicedBy?: string | null } | undefined;
+            if (cur?.invoicedAt) {
+              throw new Error(`Already marked invoiced by ${cur.invoicedBy ?? 'someone else'} — don't bill it twice.`);
+            }
+            tx.update(phaseRef, {
+              invoicedAt: Date.now(),
+              invoicedBy: user?.displayName ?? user?.uid ?? 'office',
+            });
           });
           await load();
         } catch (e) {
           notify('Could not mark invoiced', e instanceof Error ? e.message : String(e));
+          await load();
         } finally { setBusy(null); }
       },
       'Mark invoiced',
@@ -120,6 +131,10 @@ export default function AdminMoney() {
         try {
           await updateDoc(doc(db, 'projects', m.project.id, 'phases', m.phase.id), {
             invoicedAt: null, invoicedBy: null,
+            // Undo leaves a trail — "who un-invoiced this and when" is the
+            // first question when a double-bill or missed-bill is chased.
+            lastUndoneBy: user?.displayName ?? user?.uid ?? 'office',
+            lastUndoneAt: Date.now(),
           });
           await load();
         } catch (e) {

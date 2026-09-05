@@ -5,9 +5,30 @@
  * `onSubmissionCreated`  — placeholder for server-side PDF re-render in v0.2.
  */
 
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import { logger } from 'firebase-functions';
+
+/**
+ * Deactivation must KILL the session, not just flag the doc — a fired
+ * foreman with the app open kept a valid refresh token indefinitely.
+ * Revoking forces re-auth within ~1h (ID token expiry); the client also
+ * signs out instantly via its profile listener.
+ */
+export const onUserDeactivated = onDocumentUpdated('users/{uid}', async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!before || !after) return;
+  if (before.active !== false && after.active === false) {
+    try {
+      await getAuth().revokeRefreshTokens(event.params.uid);
+      logger.info(`Revoked refresh tokens for deactivated user ${event.params.uid}`);
+    } catch (err) {
+      logger.error('Token revocation failed', err);
+    }
+  }
+});
 
 export const onAttendanceCreated = onDocumentCreated(
   'projects/{projectId}/attendance/{attId}',

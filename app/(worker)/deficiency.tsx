@@ -33,8 +33,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadString } from 'firebase/storage';
 
-import { db } from '../../src/lib/firebase';
+import { db, storage } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { analyzeDeficiency } from '../../src/lib/ai';
 import { VoiceInput } from '../../src/components/VoiceInput';
@@ -156,9 +157,17 @@ export default function DeficiencyScreen() {
     if (!draft || !user || !projectId || !imageUri) return;
     setPhase('submitting');
     try {
+      // Upload the photo FIRST — a deficiency record whose only evidence
+      // is a file:// path on one phone is worthless in an incident review.
+      let photoPath: string | null = null;
+      if (imageBase64) {
+        photoPath = `projects/${projectId}/media/deficiency-${Date.now()}/photo.jpg`;
+        await uploadString(ref(storage, photoPath), imageBase64, 'base64', { contentType: 'image/jpeg' });
+      }
       await addDoc(collection(db, 'projects', projectId, 'deficiencies'), {
         ...draft,
-        photoUri: imageUri, // Local URI for v0.2; v0.3 uploads to Storage
+        photoPath,
+        photoUri: photoPath ? null : imageUri, // legacy fallback only if upload had no bytes
         voiceTranscript: voiceTranscript || null,
         status: 'open',
         reportedBy: user.uid,

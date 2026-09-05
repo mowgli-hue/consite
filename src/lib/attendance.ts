@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, doc, getDocs, query, where, serverTimestamp, addDoc, updateDoc, Timestamp, limit } from 'firebase/firestore';
+import { collection, doc, getDocs, query, where, serverTimestamp, addDoc, setDoc, updateDoc, Timestamp, limit } from 'firebase/firestore';
 import { db } from './firebase';
 import { checkGeofence } from './geofence';
 import { enqueue, withTimeout } from './offlineQueue';
@@ -36,11 +36,16 @@ function isNetworkError(err: unknown): boolean {
  * case so the UI can say so.
  */
 export async function clockInWithOfflineFallback(opts: {
-  uid: string; displayName?: string; project: Project;
+  uid: string; displayName?: string; project: Project; allProjectIds?: string[];
 }): Promise<{ offline: boolean; distanceM?: number }> {
   const { uid, displayName, project } = opts;
+  // Pre-generate the doc id so the online attempt and the offline replay
+  // target the SAME document. Before this, a timed-out-but-eventually-
+  // committed online write plus the queued copy meant a duplicate paid
+  // shift; now the replay overwrites idempotently.
+  const shiftId = doc(collection(db, 'projects', project.id, 'attendance')).id;
   try {
-    const result = await withTimeout(clockIn(opts), 10_000);
+    const result = await withTimeout(clockIn({ ...opts, shiftId }), 10_000);
     return { offline: false, distanceM: result.gps?.distanceFromProjectM };
   } catch (err) {
     if (!isNetworkError(err)) throw err; // real rejection (geofence, already clocked in…)
@@ -67,9 +72,12 @@ export async function clockInWithOfflineFallback(opts: {
   }
 
   const clockInMs = Date.now();
-  const localId = await enqueue({
-    kind: 'add',
-    collectionPath: `projects/${project.id}/attendance`,
+  // 'set' at the pre-generated path: replaying after the original write
+  // landed just overwrites the same doc — never a duplicate.
+  await enqueue({
+    kind: 'set',
+    collectionPath: '',
+    docPath: `projects/${project.id}/attendance/${shiftId}`,
     data: {
       uid, displayName: displayName ?? null,
       clockInAt: clockInMs, clockOutAt: null, clockOutBy: null,
@@ -79,7 +87,7 @@ export async function clockInWithOfflineFallback(opts: {
     label: `Clock-in · ${project.name}`,
   });
   await AsyncStorage.setItem(LOCAL_SHIFT_KEY, JSON.stringify({
-    localId, projectId: project.id, projectName: project.name, clockInMs,
+    localId: shiftId, projectId: project.id, projectName: project.name, clockInMs,
   } satisfies LocalShift));
   return { offline: true, distanceM: gps?.distanceFromProjectM };
 }
@@ -97,11 +105,27 @@ export async function clockOutLocalShift(shift: LocalShift): Promise<void> {
   await AsyncStorage.removeItem(LOCAL_SHIFT_KEY);
 }
 
-export async function clockIn(opts: { uid: string; displayName?: string; project: Project; override?: { reason: string; approvedBy: string } }) {
-  const { uid, displayName, project, override } = opts;
+export async function clockIn(opts: {
+  uid: string; displayName?: string; project: Project;
+  override?: { reason: string; approvedBy: string };
+  /** Pre-generated doc id (idempotent offline replay). */
+  shiftId?: string;
+  /** ALL the worker's projects — blocks double clock-in across sites. */
+  allProjectIds?: string[];
+}) {
+  const { uid, displayName, project, override, shiftId, allProjectIds } = opts;
   if (!project.active) throw asError({ ok: false, reason: 'project_inactive', message: 'This project is not active.' });
 
-  const openShift = await findOpenShift(uid, [project.id]);
+  // Check EVERY assigned project, not just this one — being on the clock
+  // at Site A must block clocking into Site B. A failed check blocks too
+  // (fail closed): unverifiable is not the same as clear.
+  const checkIds = [...new Set([project.id, ...(allProjectIds ?? [])])];
+  let openShift: AttendanceRecord | null = null;
+  try {
+    openShift = await findOpenShift(uid, checkIds);
+  } catch {
+    throw asError({ ok: false, reason: 'check_failed', message: 'Could not verify your existing shifts — check your connection and try again.' });
+  }
   if (openShift) throw asError({ ok: false, reason: 'already_clocked_in', message: `You are already clocked in. Clock out first.` });
 
   let gps: AttendanceGps | undefined;
@@ -114,14 +138,32 @@ export async function clockIn(opts: { uid: string; displayName?: string; project
     const check = checkGeofence({ lat: pos.coords.latitude, lng: pos.coords.longitude }, project.geofence, pos.coords.accuracy ?? 0);
     gps = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? 0, distanceFromProjectM: check.distanceM };
     if (!check.inside) throw asError({ ok: false, reason: 'outside_geofence', distanceM: check.distanceM, message: `You are ${check.distanceM}m from the site. Move within ${project.geofence.radiusM}m to clock in.` });
+  } else {
+    // Geofence off (or override): still CAPTURE the location best-effort —
+    // unenforced is fine, unrecorded is not. A 40km outlier should at
+    // least be visible in an audit. Never blocks the clock-in.
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const pos = await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }), 6_000);
+        gps = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? 0, distanceFromProjectM: -1 };
+      }
+    } catch { /* no location — record proceeds without */ }
   }
 
-  const ref = await addDoc(collection(db, 'projects', project.id, 'attendance'), {
+  const data = {
     uid, displayName: displayName ?? null,
     clockInAt: serverTimestamp(), clockOutAt: null, clockOutBy: null,
     clockInGps: gps ?? null, override: override ?? null,
-  });
-  return { id: ref.id, gps, validation: { ok: true, distanceM: gps?.distanceFromProjectM } };
+  };
+  let id: string;
+  if (shiftId) {
+    await setDoc(doc(db, 'projects', project.id, 'attendance', shiftId), data);
+    id = shiftId;
+  } else {
+    id = (await addDoc(collection(db, 'projects', project.id, 'attendance'), data)).id;
+  }
+  return { id, gps, validation: { ok: true, distanceM: gps?.distanceFromProjectM } };
 }
 
 export async function clockOut(opts: { projectId: string; recordId: string; actorUid: string; workerUid: string }) {

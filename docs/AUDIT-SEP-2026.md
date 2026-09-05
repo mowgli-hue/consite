@@ -23,6 +23,13 @@ needs a decision or a bigger build.
 | 12 | MEDIUM | FLHA submissions were fully editable for 24h (rewrite the hazard answers after an incident); submittedAt was client-controlled (future-date = permanent edit window). | Create pins submittedAt to a bounded window; updates restricted to values/endOfDay fields; approval/PDF fields immutable. |
 | 13 | MEDIUM | Daily Briefing said "Site FLHA is done ✓" if ANY submission existed today (a receipt counted). | Filters to FLHA schema ids. |
 
+> **Update (same day, second commit):** items 1–10 below plus the GPS
+> accuracy cap, always-capture GPS, money transaction + undo trail,
+> calendar-day reports, manager gating on Projects, per-worker-day FLHA %,
+> and pa-IN voice input are now FIXED. Still genuinely open: full i18n
+> coverage (item 11), daily-log per-worker doc ids and read-cost
+> denormalization (12–13), and photo resize before base64 (item 14 tail).
+
 ## Open — decide / next build (priority order)
 
 1. **Deactivation doesn't kill sessions.** `active:false` is only checked at

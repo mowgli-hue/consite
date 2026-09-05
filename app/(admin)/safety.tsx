@@ -72,36 +72,42 @@ export default function SafetyCenter() {
           project, workedDays: 0, flhaDays: 0, toolboxCount: 0, openDeficiencies: 0,
         };
 
-        // Worked days: distinct local days with ≥1 clock-in.
+        // WORKER-DAYS, not site-days: with 12 people on site, one guy's
+        // FLHA must not mark the whole day compliant. A pair is
+        // "worker X clocked in on day D"; compliant when that same worker
+        // filed an FLHA that day.
+        const workedPairs = new Set<string>();
         try {
           const att = await getDocs(query(
             collection(db, 'projects', project.id, 'attendance'),
             where('clockInAt', '>=', sinceTs),
           ));
-          const days = new Set<string>();
           att.docs.forEach((d) => {
-            const ms = tsToMs((d.data() as { clockInAt?: unknown }).clockInAt);
-            if (ms) days.add(dayKey(ms));
+            const a = d.data() as { clockInAt?: unknown; uid?: string };
+            const ms = tsToMs(a.clockInAt);
+            if (ms && a.uid) workedPairs.add(`${a.uid}|${dayKey(ms)}`);
           });
-          row.workedDays = days.size;
+          row.workedDays = workedPairs.size;
         } catch { /* skip — row shows what it can */ }
 
-        // FLHA days + toolbox talks from submissions in the window.
+        // FLHA coverage per worker-day + toolbox talks in the window.
         try {
           const subs = await getDocs(query(
             collection(db, 'projects', project.id, 'submissions'),
             where('submittedAt', '>=', sinceTs),
           ));
-          const flhaDays = new Set<string>();
+          const flhaPairs = new Set<string>();
           subs.docs.forEach((d) => {
-            const data = d.data() as { schemaId?: string; submittedAt?: unknown };
+            const data = d.data() as { schemaId?: string; submittedAt?: unknown; submittedBy?: string };
             const sid = String(data.schemaId ?? '').toLowerCase();
             const ms = tsToMs(data.submittedAt);
             if (!ms) return;
-            if (sid.includes('flha') || data.schemaId === project.defaultFlhaFormId) flhaDays.add(dayKey(ms));
+            if ((sid.includes('flha') || data.schemaId === project.defaultFlhaFormId) && data.submittedBy) {
+              flhaPairs.add(`${data.submittedBy}|${dayKey(ms)}`);
+            }
             if (sid.includes('toolbox')) row.toolboxCount += 1;
           });
-          row.flhaDays = flhaDays.size;
+          row.flhaDays = [...workedPairs].filter((p) => flhaPairs.has(p)).length;
         } catch { /* skip */ }
 
         try {
@@ -218,7 +224,7 @@ export default function SafetyCenter() {
 
                 <View style={styles.metaRow}>
                   <Text style={styles.metaText}>
-                    {r.flhaDays}/{r.workedDays} worked days with FLHA
+                    {r.flhaDays}/{r.workedDays} worker-days with FLHA
                   </Text>
                   <Text style={[styles.metaText, r.toolboxCount === 0 && r.workedDays > 0 && styles.metaWarn]}>
                     {r.toolboxCount} toolbox talk{r.toolboxCount === 1 ? '' : 's'}
