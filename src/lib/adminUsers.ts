@@ -83,6 +83,16 @@ export async function setUserActive(uid: string, active: boolean) {
   await updateDoc(doc(db, 'users', uid), { active });
 }
 
+/**
+ * Change an account's top-level type (worker / manager / admin).
+ * Rules only let role 'admin' create projects etc. — a Manager account is
+ * view-only BY DESIGN, so promoting someone who needs to run the office
+ * happens here.
+ */
+export async function setUserRole(uid: string, role: 'worker' | 'manager' | 'admin') {
+  await updateDoc(doc(db, 'users', uid), { role });
+}
+
 export async function assignToProject(uid: string, projectId: string, adminUid: string, displayName?: string) {
   await addMembership(uid, projectId, adminUid, displayName);
   await updateDoc(doc(db, 'users', uid), { projectIds: arrayUnion(projectId) });

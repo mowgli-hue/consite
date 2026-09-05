@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { notify, confirm } from '../../src/lib/notify';
 import {
-  listUsers, listAllProjects, createWorkerAccount, setUserActive,
+  listUsers, listAllProjects, createWorkerAccount, setUserActive, setUserRole,
   assignToProject, removeFromProject, setMemberRole, type MemberRole,
 } from '../../src/lib/adminUsers';
 import { doc, getDoc } from 'firebase/firestore';
@@ -152,6 +152,51 @@ export default function AdminUsers() {
 
                 {isOpen && (
                   <View style={styles.detail}>
+                    <Pressable
+                      style={styles.profileLink}
+                      onPress={() => router.push(`/worker-detail?uid=${u.uid}` as any)}
+                    >
+                      <Feather name="user" size={15} color={colors.primary} />
+                      <Text style={styles.profileLinkText}>Full profile — info, certifications & tickets</Text>
+                      <Feather name="chevron-right" size={15} color={colors.primary} />
+                    </Pressable>
+
+                    {me?.role === 'admin' && u.uid !== me.uid && (
+                      <>
+                        <Text style={[styles.detailLabel, { marginTop: spacing.md }]}>
+                          Account type — Manager is view-only; Admin runs the office
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+                          {(['worker', 'manager', 'admin'] as const).map((r) => (
+                            <Pressable
+                              key={r}
+                              style={[styles.roleChip, u.role === r && styles.roleChipOn]}
+                              onPress={() => {
+                                if (u.role === r) return;
+                                confirm(
+                                  `Make ${u.displayName} ${r === 'admin' ? 'an admin' : `a ${r}`}?`,
+                                  r === 'admin'
+                                    ? 'Admins can create projects, manage users and see everything.'
+                                    : r === 'manager'
+                                      ? 'Managers see everything office-side but cannot change anything.'
+                                      : 'Workers only see their own site tools.',
+                                  async () => {
+                                    try { await setUserRole(u.uid, r); await load(); }
+                                    catch (err: any) { notify('Role change failed', err.message); }
+                                  },
+                                  'Change',
+                                );
+                              }}
+                            >
+                              <Text style={[styles.roleChipText, u.role === r && styles.roleChipTextOn]}>
+                                {r === 'worker' ? 'Worker' : r === 'manager' ? 'Manager' : 'Admin'}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </>
+                    )}
+
                     <View style={styles.detailRow}>
                       <Text style={styles.detailLabel}>Active</Text>
                       <Switch
@@ -312,6 +357,12 @@ const styles = StyleSheet.create({
   sub: { fontSize: typography.sizes.sm, color: colors.textSecondary, marginTop: 1 },
 
   detail: { borderTopWidth: 1, borderColor: colors.border, padding: spacing.lg, paddingTop: spacing.md },
+  profileLink: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.primarySoft, borderRadius: radii.md,
+    padding: spacing.md,
+  },
+  profileLinkText: { flex: 1, color: colors.primary, fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
   detailRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
   detailLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.textSecondary },
   projRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },

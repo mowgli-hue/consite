@@ -139,9 +139,16 @@ service cloud.firestore {
                        resource.data.uid == request.auth.uid ||
                        hasProjectPerm(pid, 'supervisor.attendance.clockout-others');
 
-        // Create: only for yourself
-        allow create: if isProjectMember(pid) &&
-                         request.resource.data.uid == request.auth.uid;
+        // Create: for yourself (GPS clock-in), or a foreman entering a
+        // crew member's shift by hand (missed clock-in). Manual entries
+        // must be flagged, attributed, and land as 'pending' — the office
+        // still approves; nobody writes pre-approved hours.
+        allow create: if (isProjectMember(pid) &&
+                          request.resource.data.uid == request.auth.uid) ||
+                         (hasProjectPerm(pid, 'supervisor.attendance.clockout-others') &&
+                          request.resource.data.manualEntry == true &&
+                          request.resource.data.enteredBy == request.auth.uid &&
+                          request.resource.data.status == 'pending');
 
         // Update: admin and approvers can do anything; foremen can clock out
         // others; a worker can update their own shift but can never set

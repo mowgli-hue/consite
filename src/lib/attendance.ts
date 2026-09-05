@@ -133,6 +133,35 @@ export async function clockOut(opts: { projectId: string; recordId: string; acto
   });
 }
 
+/**
+ * Foreman enters a crew member's shift by hand (missed clock-in, paper
+ * timesheet catch-up). Flagged manualEntry + attributed, lands 'pending'
+ * so the normal approval flow still applies — the app computes hours,
+ * the office confirms them.
+ */
+export async function addManualShift(opts: {
+  projectId: string; workerUid: string; workerName: string;
+  inMs: number; outMs: number; breakMinutes?: number; notes?: string;
+  enteredBy: string; enteredByName?: string;
+}) {
+  const { projectId, workerUid, workerName, inMs, outMs, breakMinutes, notes, enteredBy, enteredByName } = opts;
+  if (outMs <= inMs) throw new Error('Shift end must be after shift start.');
+  if (outMs - inMs > 16 * 3_600_000) throw new Error('Shift longer than 16 hours — check the times.');
+  await addDoc(collection(db, 'projects', projectId, 'attendance'), {
+    uid: workerUid, displayName: workerName,
+    clockInAt: Timestamp.fromMillis(inMs), clockOutAt: Timestamp.fromMillis(outMs),
+    clockOutBy: enteredBy, clockInGps: null, override: null,
+    status: 'pending',
+    manualEntry: true, enteredBy, enteredByName: enteredByName ?? null,
+    breakMinutes: breakMinutes ?? 0, notes: notes?.trim() || null,
+  });
+}
+
+/** Paid hours for a shift — clocked time minus the unpaid break. */
+export function paidHours(inMs: number, outMs: number, breakMinutes?: number): number {
+  return Math.max(0, (outMs - inMs) / 3_600_000 - (breakMinutes ?? 0) / 60);
+}
+
 export async function approveShift(opts: { projectId: string; recordId: string; approverUid: string }) {
   const { projectId, recordId, approverUid } = opts;
   await updateDoc(doc(db, 'projects', projectId, 'attendance', recordId), {

@@ -108,7 +108,7 @@ export default function AdminReports() {
         return {
           id: d.id, uid: a.uid, name: a.displayName ?? nameOf(a.uid),
           inMs, outMs,
-          hours: outMs ? (outMs - inMs) / 3_600_000 : undefined,
+          hours: outMs ? Math.max(0, (outMs - inMs) / 3_600_000 - ((a.breakMinutes ?? 0) / 60)) : undefined,
           open: !outMs,
           status: a.status,
         };
