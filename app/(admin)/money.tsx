@@ -62,7 +62,10 @@ export default function AdminMoney() {
 
   const load = useCallback(async () => {
     try {
-      const snap = await getDocs(query(collection(db, 'projects'), where('active', '==', true)));
+      // ALL projects, not just active — a deactivated or archived job can
+      // still hold completed 💰 milestones that were never billed. Money
+      // owed doesn't stop being owed because the job closed.
+      const snap = await getDocs(collection(db, 'projects'));
       const projects = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Project, 'id'>) }));
       const all: Milestone[] = [];
       await Promise.all(projects.map(async (project) => {
@@ -198,7 +201,9 @@ export default function AdminMoney() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.phaseName}>💰 {m.phase.name}</Text>
                   <Text style={styles.projectLine}>
-                    {m.project.name} · milestone {m.seq} of {m.seqTotal}
+                    {m.project.name}
+                    {(!m.project.active || m.project.stage === 'archived') ? ' · ⚠ JOB CLOSED — STILL UNBILLED' : ''}
+                    {' · '}milestone {m.seq} of {m.seqTotal}
                     {fmtValue(m.project.contractValue) ? ` · contract ${fmtValue(m.project.contractValue)}` : ''}
                   </Text>
                   <Text style={styles.metaLine}>

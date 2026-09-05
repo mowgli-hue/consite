@@ -120,9 +120,17 @@ export function DailyBriefing() {
       try {
         const since = Timestamp.fromMillis(dayStartMs());
         const q1 = isForeman
-          ? query(collection(db, 'projects', pid, 'submissions'), where('submittedAt', '>=', since), limit(5))
-          : query(collection(db, 'projects', pid, 'submissions'), where('submittedBy', '==', user.uid), where('submittedAt', '>=', since), limit(5));
-        const subs = await getDocs(q1);
+          ? query(collection(db, 'projects', pid, 'submissions'), where('submittedAt', '>=', since), limit(25))
+          : query(collection(db, 'projects', pid, 'submissions'), where('submittedBy', '==', user.uid), where('submittedAt', '>=', since), limit(25));
+        const snap1 = await getDocs(q1);
+        // Only an actual FLHA counts — a receipt or toolbox talk this
+        // morning must not turn this line green. (Filtered client-side
+        // to avoid a composite index.)
+        const flhaOnly = snap1.docs.filter((d) => {
+          const sid = String((d.data() as { schemaId?: string }).schemaId ?? '').toLowerCase();
+          return sid.includes('flha');
+        });
+        const subs = { empty: flhaOnly.length === 0 };
         add({
           id: 'flha', icon: 'shield',
           text: subs.empty

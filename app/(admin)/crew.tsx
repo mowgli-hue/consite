@@ -47,7 +47,9 @@ function isFirstAidCert(data: Record<string, unknown>): boolean {
   const t = `${data.type ?? ''} ${data.displayName ?? ''}`.toLowerCase();
   const exp = data.expiresAt;
   const valid = typeof exp !== 'number' || exp > Date.now();
-  return valid && (t.includes('first') || t.includes('ofa') || t.includes('aid'));
+  // Unverified self-added certs don't count (same rule as the lifecycle check).
+  const verified = data.verified !== false;
+  return valid && verified && (t.includes('first') || t.includes('ofa') || t.includes('aid'));
 }
 
 export default function CrewBoard() {

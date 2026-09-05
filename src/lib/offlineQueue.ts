@@ -100,6 +100,14 @@ export async function flush(): Promise<number> {
             addDoc(collection(db, op.collectionPath), reviveTimestamps(op.data, op.tsFields)),
           );
           idMap.set(op.localId, ref.id);
+          // Persist the resolution into every later queued op NOW — the
+          // in-memory idMap dies with this flush(), and a clock-out queued
+          // in a later session must still find the real doc id.
+          q = [q[0], ...q.slice(1).map((later) => (
+            later.docPath?.includes(op.localId)
+              ? { ...later, docPath: later.docPath.replace(op.localId, ref.id) }
+              : later
+          ))];
         } else {
           // Resolve any {localId} placeholder from an earlier add in this queue
           let path = op.docPath!;
@@ -110,8 +118,21 @@ export async function flush(): Promise<number> {
         q = q.slice(1);
         await writeQueue(q);
         synced += 1;
-      } catch {
-        break; // still offline (or dependent op failed) — try again later
+      } catch (err) {
+        // Network problems → stop and retry later. PERMANENT failures
+        // (permission-denied, unresolved ref, bad path) must not jam the
+        // queue forever — every later FLHA and clock-out would silently
+        // stop syncing. Park the bad op and keep going.
+        const msg = String((err as { code?: string; message?: string })?.code ?? '') +
+          ' ' + String((err as { message?: string })?.message ?? '');
+        const permanent = msg.includes('permission-denied') ||
+          msg.includes('unresolved-local-ref') || msg.includes('invalid-argument') ||
+          msg.includes('not-found');
+        if (!permanent) break; // offline — try again later
+        q = q.slice(1);
+        await writeQueue(q);
+        // eslint-disable-next-line no-console
+        console.warn('offlineQueue: dropped unsyncable op', op.label, msg);
       }
     }
   } finally {

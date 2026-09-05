@@ -67,7 +67,9 @@ export default function ProjectLifecycle() {
   useEffect(() => { load(); }, [load]);
 
   const stage = (project?.stage ?? 'contract') as Stage;
-  const allPass = (checks ?? []).every((c) => c.pass);
+  // checks === null means STILL LOADING — the gate stays closed until we
+  // know. ([].every() is true; that bug let a fast tap advance any stage.)
+  const allPass = checks !== null && checks.length > 0 && checks.every((c) => c.pass);
 
   async function patchProject(patch: Record<string, unknown>) {
     if (!id) return;
@@ -83,7 +85,18 @@ export default function ProjectLifecycle() {
       next === 'archived'
         ? 'The project archives as a permanent, searchable record.'
         : 'The whole team sees the new stage.',
-      () => patchProject({ stage: next }).catch((e) => notify('Advance failed', e.message)),
+      () => (async () => {
+        // Re-verify against LIVE data at the moment of the tap — the
+        // rendered checks may be stale (deficiency filed 5 minutes ago).
+        if (!project) return;
+        const fresh = await computeStageChecks(project, phases);
+        if (fresh.length === 0 || !fresh.every((c) => c.pass)) {
+          notify('Not ready', 'A check changed since this screen loaded — review the list below.');
+          await load();
+          return;
+        }
+        await patchProject({ stage: next });
+      })().catch((e) => notify('Advance failed', e.message)),
       next === 'archived' ? 'Close out' : 'Advance',
     );
   }
@@ -139,7 +152,8 @@ export default function ProjectLifecycle() {
           r.onload = () => res(String(r.result).split(',')[1] ?? '');
           r.onerror = rej; r.readAsDataURL(file);
         });
-        const contractPath = `projects/${id}/media/contract/contract.pdf`;
+        // Office-only storage path — crew can read media/, not contract/.
+        const contractPath = `projects/${id}/contract/contract.pdf`;
         await uploadString(ref(storage, contractPath), b64, 'base64', { contentType: 'application/pdf' });
         await patchProject({ contractPath });
         notify('Contract attached', 'Part of the permanent project record now.');

@@ -249,6 +249,10 @@ export const missedClockoutSweep = onSchedule(
           clockOutAt: FieldValue.serverTimestamp(),
           clockOutBy: 'system:missed-clockout-sweep',
           needsReview: true,
+          // Without this the shift never appears in the foreman's
+          // approval queue (it filters status == 'pending') — auto-closed
+          // days were invisible and therefore unpayable.
+          status: 'pending',
         });
 
         const uid = att.data().uid as string;

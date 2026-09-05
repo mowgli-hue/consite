@@ -28,6 +28,7 @@ type Row = {
   id: string; uid: string; name: string;
   inMs: number; outMs?: number; hours?: number; open: boolean;
   status?: string;
+  manualEntry?: boolean; enteredBy?: string; approvedBy?: string;
 };
 
 const RANGES = [
@@ -111,6 +112,9 @@ export default function AdminReports() {
           hours: outMs ? Math.max(0, (outMs - inMs) / 3_600_000 - ((a.breakMinutes ?? 0) / 60)) : undefined,
           open: !outMs,
           status: a.status,
+          manualEntry: a.manualEntry === true,
+          enteredBy: a.enteredBy ? nameOf(a.enteredBy) : undefined,
+          approvedBy: a.approvedBy ? nameOf(a.approvedBy) : undefined,
         };
       }));
     } catch (err: any) {
@@ -142,13 +146,15 @@ export default function AdminReports() {
     const project = projects.find((p) => p.id === projectId);
     const esc = (s: string) => '"' + String(s).replace(/"/g, '""') + '"';
     const lines = [
-      ['Worker', 'Project', 'Date', 'Clock in', 'Clock out', 'Hours', 'Status'].join(','),
+      ['Worker', 'Project', 'Date', 'Clock in', 'Clock out', 'Hours', 'Status', 'Entry type', 'Entered by', 'Approved by'].join(','),
       ...rows.map((r) => [
         esc(r.name), esc(project?.name ?? ''),
         new Date(r.inMs).toLocaleDateString('en-CA'),
         new Date(r.inMs).toLocaleTimeString(), r.outMs ? new Date(r.outMs).toLocaleTimeString() : '',
         r.hours?.toFixed(2) ?? '',
         r.open ? 'NO CLOCK-OUT — REVIEW' : (r.status === 'approved' ? 'approved' : 'PENDING FOREMAN APPROVAL'),
+        r.manualEntry ? 'MANUAL (foreman-entered)' : 'GPS clock-in',
+        esc(r.enteredBy ?? ''), esc(r.approvedBy ?? ''),
       ].join(',')),
     ];
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -230,6 +236,11 @@ export default function AdminReports() {
                     {new Date(r.inMs).toLocaleDateString('en-CA')} · in {new Date(r.inMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     {r.outMs ? ` → out ${new Date(r.outMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ' → still on the clock'}
                   </Text>
+                  {r.manualEntry && (
+                    <Text style={styles.manualTag}>
+                      ✎ MANUAL — entered by {r.enteredBy ?? 'foreman'}, not GPS
+                    </Text>
+                  )}
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.entryHours, r.open && { color: colors.danger }]}>
@@ -306,6 +317,10 @@ const styles = StyleSheet.create({
   entryOpen: { borderColor: colors.danger },
   entryName: { fontWeight: typography.weights.medium, color: colors.text },
   entrySub: { color: colors.textSecondary, fontSize: typography.sizes.sm, marginTop: 1 },
+  manualTag: {
+    color: colors.warning, fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold, marginTop: 2,
+  },
   entryHours: { fontWeight: typography.weights.bold, color: colors.text },
   statusTag: { fontSize: typography.sizes.xs, marginTop: 2 },
   approveBtn: {

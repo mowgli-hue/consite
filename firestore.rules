@@ -76,9 +76,16 @@ service cloud.firestore {
       // admin manages.
       match /phases/{phaseId} {
         allow read: if isStaff() || isProjectMember(pid);
-        allow create, delete: if isAdmin();
+        // Phases carry invoice fields — deleting an invoiced phase would
+        // erase the billing record.
+        allow create: if isAdmin();
+        allow delete: if isAdmin() && !('invoicedAt' in resource.data);
+        // Foremen advance/complete phases only. invoiceMilestone /
+        // invoicedAt / invoicedBy are money — admin-only.
         allow update: if isAdmin() ||
-                         hasProjectPerm(pid, 'supervisor.forms.approve');
+                         (hasProjectPerm(pid, 'supervisor.forms.approve') &&
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['status', 'completedAt', 'completedBy']));
       }
 
       // Plans — view requires project access; foremen and admin upload.
@@ -120,15 +127,24 @@ service cloud.firestore {
                          resource.data.submittedBy == request.auth.uid ||
                          hasProjectPerm(pid, 'supervisor.forms.approve')
                        ));
+        // submittedAt is pinned to a bounded window (36h back covers the
+        // offline queue) so the 24h edit window below can't be gamed with
+        // a future-dated submission. No approval/PDF fields on create.
         allow create: if hasProjectPerm(pid, 'worker.forms.submit') &&
-                         request.resource.data.submittedBy == request.auth.uid;
-        // PDF path is appended server-side by Cloud Function.
-        // Owner may update their own submission same-day only (End of Day
-        // answers at clock-out) — schemaId and submittedBy must not change.
+                         request.resource.data.submittedBy == request.auth.uid &&
+                         request.resource.data.submittedAt is timestamp &&
+                         request.resource.data.submittedAt.toMillis() <= request.time.toMillis() + 5 * 60 * 1000 &&
+                         request.resource.data.submittedAt.toMillis() >= request.time.toMillis() - 36 * 60 * 60 * 1000 &&
+                         !('approvedBy' in request.resource.data) &&
+                         (!('pdfPath' in request.resource.data) || request.resource.data.pdfPath == null);
+        // PDF path is appended server-side by Cloud Function (Admin SDK
+        // bypasses rules). Owner may update their own submission same-day
+        // only (End of Day answers at clock-out) — and only the answer
+        // fields: identity, schema, PDF and approval fields are immutable.
         allow update: if isAdmin() ||
                          (resource.data.submittedBy == request.auth.uid &&
-                          request.resource.data.submittedBy == resource.data.submittedBy &&
-                          request.resource.data.schemaId == resource.data.schemaId &&
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['values', 'endOfDayAt', 'pendingSync', 'updatedAt']) &&
                           request.time.toMillis() - resource.data.submittedAt.toMillis() < 24 * 60 * 60 * 1000);
         allow delete: if isAdmin();
       }
@@ -139,25 +155,65 @@ service cloud.firestore {
                        resource.data.uid == request.auth.uid ||
                        hasProjectPerm(pid, 'supervisor.attendance.clockout-others');
 
-        // Create: for yourself (GPS clock-in), or a foreman entering a
-        // crew member's shift by hand (missed clock-in). Manual entries
-        // must be flagged, attributed, and land as 'pending' — the office
-        // still approves; nobody writes pre-approved hours.
+        // Create — two paths, both field-validated (hours are payroll):
+        //  1. Self clock-in: open shift only, no status/approval fields,
+        //     clockInAt within a bounded window (36h back for offline
+        //     queue sync, 5min forward for clock skew). No backdated,
+        //     pre-closed, or pre-approved shifts.
+        //  2. Foreman manual entry: flagged, attributed, NOT for yourself,
+        //     backdatable max 14 days, lands 'pending'.
         allow create: if (isProjectMember(pid) &&
-                          request.resource.data.uid == request.auth.uid) ||
+                          request.resource.data.uid == request.auth.uid &&
+                          (!('manualEntry' in request.resource.data) || request.resource.data.manualEntry == false) &&
+                          request.resource.data.clockOutAt == null &&
+                          !('status' in request.resource.data) &&
+                          !('approvedBy' in request.resource.data) &&
+                          !('breakMinutes' in request.resource.data) &&
+                          request.resource.data.clockInAt is timestamp &&
+                          request.resource.data.clockInAt.toMillis() <= request.time.toMillis() + 5 * 60 * 1000 &&
+                          request.resource.data.clockInAt.toMillis() >= request.time.toMillis() - 36 * 60 * 60 * 1000) ||
                          (hasProjectPerm(pid, 'supervisor.attendance.clockout-others') &&
                           request.resource.data.manualEntry == true &&
                           request.resource.data.enteredBy == request.auth.uid &&
-                          request.resource.data.status == 'pending');
+                          request.resource.data.uid != request.auth.uid &&
+                          request.resource.data.status == 'pending' &&
+                          !('approvedBy' in request.resource.data) &&
+                          request.resource.data.clockInAt is timestamp &&
+                          request.resource.data.clockOutAt is timestamp &&
+                          request.resource.data.clockInAt.toMillis() >= request.time.toMillis() - 14 * 24 * 60 * 60 * 1000 &&
+                          request.resource.data.clockInAt.toMillis() <= request.time.toMillis() + 24 * 60 * 60 * 1000);
 
-        // Update: admin and approvers can do anything; foremen can clock out
-        // others; a worker can update their own shift but can never set
-        // status to 'approved' (no self-approval).
+        // Update — every branch is scoped to exactly the fields it needs.
+        // Times can never be rewritten after the fact except by admin.
+        //  · worker: close their OWN OPEN shift, nothing else
+        //  · clockout-others: close someone's open shift
+        //  · approve: status flip only — never your own shift, never a
+        //    shift you manually entered (separation of duties), never
+        //    re-writing an already-approved record
         allow update: if isAdmin() ||
-                         hasProjectPerm(pid, 'supervisor.attendance.approve') ||
-                         hasProjectPerm(pid, 'supervisor.attendance.clockout-others') ||
                          (resource.data.uid == request.auth.uid &&
-                          request.resource.data.status != 'approved');
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['clockOutAt', 'clockOutBy', 'status', 'offlineQueued']) &&
+                          (!('status' in resource.data) || resource.data.status != 'approved') &&
+                          request.resource.data.status == 'pending' &&
+                          resource.data.clockOutAt == null &&
+                          request.resource.data.clockOutAt is timestamp &&
+                          request.resource.data.clockOutAt.toMillis() <= request.time.toMillis() + 5 * 60 * 1000 &&
+                          request.resource.data.clockOutAt.toMillis() >= request.time.toMillis() - 36 * 60 * 60 * 1000) ||
+                         (hasProjectPerm(pid, 'supervisor.attendance.clockout-others') &&
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['clockOutAt', 'clockOutBy', 'status']) &&
+                          resource.data.clockOutAt == null &&
+                          request.resource.data.status == 'pending' &&
+                          request.resource.data.clockOutBy == request.auth.uid) ||
+                         (hasProjectPerm(pid, 'supervisor.attendance.approve') &&
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['status', 'approvedBy', 'approvedAt', 'needsReview']) &&
+                          request.resource.data.status == 'approved' &&
+                          request.resource.data.approvedBy == request.auth.uid &&
+                          resource.data.uid != request.auth.uid &&
+                          (!('enteredBy' in resource.data) || resource.data.enteredBy != request.auth.uid) &&
+                          (!('status' in resource.data) || resource.data.status != 'approved'));
 
         allow delete: if isAdmin();
       }
@@ -221,13 +277,32 @@ service cloud.firestore {
 
     match /users/{uid}/certifications/{certId} {
       allow read: if isMe(uid) || isStaff();
-      allow create, update, delete: if isMe(uid) || isAdmin();
+      // Workers attach evidence; ADMINS confer validity. A self-added cert
+      // is always verified:false until the office checks the ticket —
+      // otherwise a fake 'First Aid' entry flips the WorkSafeBC crew
+      // check green. Legacy certs (no verified field) grandfathered in
+      // the checks; new ones need office sign-off.
+      allow create: if isAdmin() ||
+                       (isMe(uid) && request.resource.data.verified == false);
+      allow update: if isAdmin() ||
+                       (isMe(uid) &&
+                        request.resource.data.verified == false &&
+                        (!('verified' in resource.data) || resource.data.verified == false));
+      allow delete: if isAdmin() ||
+                       (isMe(uid) &&
+                        (!('verified' in resource.data) || resource.data.verified == false));
     }
 
     // Worker notifications — written by Cloud Functions; worker reads own,
     // marks own as read.
     match /users/{uid}/notifications/{nid} {
-      allow read, update: if isMe(uid) || isStaff();
+      allow read: if isMe(uid) || isStaff();
+      // Mark-read only — the notification BODY is a record; letting the
+      // recipient (or a view-only manager) rewrite "your ticket expires"
+      // into "cert verified" would defeat the point.
+      allow update: if (isMe(uid) || isStaff()) &&
+                       request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['read', 'readAt']);
       allow create, delete: if isAdmin();
     }
 
@@ -264,7 +339,12 @@ service cloud.firestore {
     // ─────────────────────────────────────────────────────
 
     match /notifications/{nid} {
-      allow read, update: if isStaff(); // manager reads inbox + marks read
+      allow read: if isStaff();
+      // Manager may mark read — and only that; the alert text itself is
+      // the office record.
+      allow update: if isStaff() &&
+                       request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['read', 'readAt']);
       allow create, delete: if isAdmin();
     }
 

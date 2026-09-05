@@ -261,6 +261,9 @@ function AddCertModal({
         expiresAt: expiresMs,
         createdAt: Date.now(),
         createdBy: user.uid,
+        // Self-added tickets need office verification before they count
+        // toward safety checks (rules enforce this).
+        verified: false,
       });
       reset();
       onAdded();

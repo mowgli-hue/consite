@@ -15,9 +15,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
 
 import { db } from '../../src/lib/firebase';
+import { useAuth } from '../../src/contexts/AuthContext';
 import { notify } from '../../src/lib/notify';
 import { expiryStatus, type Certification } from '../../src/types/certification';
 import type { User } from '../../src/types';
@@ -36,6 +37,7 @@ function fmtDate(ms?: number | null): string {
 
 export default function WorkerDetail() {
   const { uid } = useLocalSearchParams<{ uid: string }>();
+  const { user: me } = useAuth();
   const [worker, setWorker] = useState<User | null>(null);
   const [certs, setCerts] = useState<Certification[] | null>(null);
   const [assignments, setAssignments] = useState<ProjectAssignment[]>([]);
@@ -168,6 +170,7 @@ export default function WorkerDetail() {
             : st.state === 'expiring-soon'
               ? `Expires in ${st.daysUntilExpiry} days`
               : st.state === 'never-expires' ? 'No expiry' : `Valid until ${fmtDate(c.expiresAt)}`;
+          const unverified = (c as { verified?: boolean }).verified === false;
           return (
             <View key={c.id} style={styles.rowCard}>
               <Feather
@@ -179,8 +182,29 @@ export default function WorkerDetail() {
                 <Text style={styles.rowSub}>
                   {c.issuer}{c.certificateNumber ? ` · #${c.certificateNumber}` : ''} · issued {fmtDate(c.issuedAt)}
                 </Text>
+                {unverified && (
+                  <Text style={styles.unverifiedText}>
+                    UNVERIFIED — self-added; doesn’t count for safety checks until the office confirms the paper ticket
+                  </Text>
+                )}
               </View>
-              <Text style={[styles.statusText, { color: tone }]}>{statusText}</Text>
+              {unverified && me?.role === 'admin' ? (
+                <Pressable
+                  style={styles.verifyBtn}
+                  onPress={async () => {
+                    try {
+                      await updateDoc(doc(db, 'users', uid!, 'certifications', c.id), {
+                        verified: true, verifiedBy: me.uid, verifiedAt: Date.now(),
+                      });
+                      await load();
+                    } catch (e) { notify('Verify failed', e instanceof Error ? e.message : String(e)); }
+                  }}
+                >
+                  <Text style={styles.verifyBtnText}>Verify</Text>
+                </Pressable>
+              ) : (
+                <Text style={[styles.statusText, { color: tone }]}>{statusText}</Text>
+              )}
             </View>
           );
         })}
@@ -247,4 +271,13 @@ const styles = StyleSheet.create({
   statusText: { fontSize: typography.sizes.xs, fontWeight: typography.weights.bold, textAlign: 'right' },
 
   emptyText: { color: colors.textSecondary, fontSize: typography.sizes.sm },
+  unverifiedText: {
+    marginTop: 2, fontSize: typography.sizes.xs,
+    color: colors.warning, fontWeight: typography.weights.semibold,
+  },
+  verifyBtn: {
+    backgroundColor: colors.primary, borderRadius: radii.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+  },
+  verifyBtnText: { color: colors.textInverse, fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
 });

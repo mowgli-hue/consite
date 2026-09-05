@@ -42,6 +42,14 @@ service firebase.storage {
                    && request.resource.size < 25 * 1024 * 1024;   // 25 MB cap
     }
 
+    // Signed contracts — the money document. Office-only, like
+    // contractValue. (Older uploads lived under media/ and are still
+    // member-readable until re-attached — re-upload to migrate.)
+    match /projects/{pid}/contract/{filename} {
+      allow read: if isSignedIn() && userRole() in ['admin', 'manager'];
+      allow write: if isAdmin() && request.resource.size < 25 * 1024 * 1024;
+    }
+
     match /projects/{pid}/submissions/{subId}/{filename} {
       // Worker can upload to their own submission folder; read scoped to project
       allow read: if isProjectMember(pid) || isAdmin();

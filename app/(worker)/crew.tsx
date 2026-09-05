@@ -38,7 +38,7 @@ function parseWhen(dateStr: string, timeStr: string): number | null {
 type PendingShift = {
   id: string; projectId: string; projectName: string;
   uid: string; name: string; inMs: number; outMs?: number; hours?: number;
-  needsReview?: boolean; open: boolean; manualEntry?: boolean;
+  needsReview?: boolean; open: boolean; manualEntry?: boolean; enteredBy?: string;
 };
 
 type CrewMember = { uid: string; name: string };
@@ -98,7 +98,7 @@ export default function CrewHours() {
             uid: a.uid, name: a.displayName ?? a.uid?.slice(0, 8) ?? 'Worker',
             inMs, outMs,
             hours: outMs ? paidHours(inMs, outMs, a.breakMinutes) : undefined,
-            needsReview: a.needsReview, open: !outMs, manualEntry: a.manualEntry,
+            needsReview: a.needsReview, open: !outMs, manualEntry: a.manualEntry, enteredBy: a.enteredBy,
           });
         }
       }
@@ -123,6 +123,11 @@ export default function CrewHours() {
     if (!user) return;
     if (s.uid === user.uid) {
       notify('Not allowed', 'You cannot approve your own hours — a lead foreman or the office does that.');
+      return;
+    }
+    if (s.manualEntry && s.enteredBy === user.uid) {
+      // Separation of duties — also enforced by Firestore rules.
+      notify('Needs a second set of eyes', 'You entered this shift, so another foreman or the office approves it.');
       return;
     }
     setBusyId(s.id);

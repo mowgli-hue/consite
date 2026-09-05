@@ -125,7 +125,11 @@ export async function computeStageChecks(project: Project, phases: Phase[]): Pro
           const t = `${c.data().type ?? ''} ${c.data().displayName ?? ''}`.toLowerCase();
           const exp = c.data().expiresAt;
           const valid = typeof exp !== 'number' || exp > Date.now();
-          return valid && (t.includes('first') || t.includes('ofa') || t.includes('aid'));
+          // Self-added certs count only once the office verifies them
+          // (verified === false is blocked; legacy certs without the
+          // field are grandfathered).
+          const verified = c.data().verified !== false;
+          return valid && verified && (t.includes('first') || t.includes('ofa') || t.includes('aid'));
         })) { hasFirstAid = true; break; }
       }
     } catch { /* certs unreadable → check stays red with instruction */ }
@@ -141,13 +145,20 @@ export async function computeStageChecks(project: Project, phases: Phase[]): Pro
   }
 
   if (stage === 'punch') {
-    let openDefs = 0;
+    // FAIL CLOSED: if we can't read the punch list we do NOT report zero —
+    // this is the one check whose failure direction is unsafe.
+    let openDefs: number | null = null;
     try {
       openDefs = (await getDocs(query(collection(db, 'projects', pid, 'deficiencies'), where('status', '==', 'open')))).size;
-    } catch { /* skip */ }
-    add('deficiencies', openDefs === 0 ? 'No open deficiencies' : `${openDefs} open deficienc${openDefs === 1 ? 'y' : 'ies'}`,
-      openDefs === 0,
-      'Close every deficiency on the Punch List — this stage cannot complete around open items.');
+    } catch { /* openDefs stays null → failing check below */ }
+    if (openDefs === null) {
+      add('deficiencies', 'Could not verify deficiencies', false,
+        'The punch list could not be read just now — check your connection and refresh before advancing.');
+    } else {
+      add('deficiencies', openDefs === 0 ? 'No open deficiencies' : `${openDefs} open deficienc${openDefs === 1 ? 'y' : 'ies'}`,
+        openDefs === 0,
+        'Close every deficiency on the Punch List — this stage cannot complete around open items.');
+    }
   }
 
   if (stage === 'closeout') {
