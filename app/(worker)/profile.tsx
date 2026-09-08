@@ -11,17 +11,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, doc, getDocs, query, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref } from 'firebase/storage';
 
 import { db, storage } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useT, type Lang } from '../../src/contexts/I18nContext';
+import { directionsUrl } from '../../src/lib/maps';
 import { notify } from '../../src/lib/notify';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
+import type { Project } from '../../src/types';
 
 type CertSummary = { total: number; expiringSoon: number; expired: number };
 type SafetyDoc = { id: string; title: string; url?: string; storagePath?: string };
+type MySite = Pick<Project, 'id' | 'name' | 'address' | 'geofence'>;
 
 export default function WorkerProfile() {
   const { user } = useAuth();
@@ -33,6 +36,7 @@ export default function WorkerProfile() {
   const [saving, setSaving] = useState(false);
   const [certs, setCerts] = useState<CertSummary | null>(null);
   const [docs, setDocs] = useState<SafetyDoc[]>([]);
+  const [sites, setSites] = useState<MySite[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -66,6 +70,18 @@ export default function WorkerProfile() {
           storagePath: d.data().storagePath as string | undefined,
         })));
       } catch { setDocs([]); }
+      // My sites — for one-tap Google Maps directions.
+      try {
+        const loaded: MySite[] = [];
+        for (const pid of user.projectIds ?? []) {
+          const p = await getDoc(doc(db, 'projects', pid));
+          if (p.exists()) {
+            const d = p.data() as Project;
+            if (d.active !== false) loaded.push({ id: p.id, name: d.name, address: d.address, geofence: d.geofence });
+          }
+        }
+        setSites(loaded);
+      } catch { setSites([]); }
     })();
   }, [user?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -155,6 +171,28 @@ export default function WorkerProfile() {
             </Pressable>
           )}
         </View>
+
+        {sites.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>{t('My Sites')}</Text>
+            {sites.map((s) => (
+              <Pressable
+                key={s.id}
+                style={styles.rowCard}
+                onPress={() => Linking.openURL(directionsUrl(s))}
+              >
+                <View style={styles.mapIconWrap}>
+                  <Feather name="navigation" size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>{s.name}</Text>
+                  <Text style={styles.rowSub}>{s.address} · {t('Tap for Google Maps directions')}</Text>
+                </View>
+                <Feather name="external-link" size={16} color={colors.textTertiary} />
+              </Pressable>
+            ))}
+          </>
+        )}
 
         <Text style={styles.sectionLabel}>My Tickets</Text>
         <Pressable style={styles.rowCard} onPress={() => router.push('/certifications' as any)}>
@@ -269,6 +307,10 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: typography.sizes.md, fontWeight: typography.weights.medium, color: colors.text },
   rowSub: { fontSize: typography.sizes.sm, color: colors.textSecondary, marginTop: 2 },
 
+  mapIconWrap: {
+    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
   langRow: { flexDirection: 'row', gap: spacing.sm },
   langChip: {
     flex: 1, alignItems: 'center', paddingVertical: spacing.md,

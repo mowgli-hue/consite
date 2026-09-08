@@ -3,9 +3,9 @@
  * geofence center + radius, active flag).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { createElement, useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Switch, Platform,
+  View, Text, StyleSheet, ScrollView, Pressable, TextInput, ActivityIndicator, Switch, Platform, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { notify } from '../../src/lib/notify';
 import { listAllProjects } from '../../src/lib/adminUsers';
+import { parseLatLng, searchUrl, embedUrl } from '../../src/lib/maps';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { Project } from '../../src/types';
 
@@ -101,6 +102,19 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: () 
   const [geofenceEnabled, setGeofenceEnabled] = useState(project?.geofenceEnabled ?? true);
   const [active, setActive] = useState(project?.active ?? true);
   const [busy, setBusy] = useState(false);
+  const [mapsPaste, setMapsPaste] = useState('');
+
+  /** Paste a Google Maps link or "lat, lng" → coordinates fill themselves. */
+  function applyMapsPaste(text: string) {
+    setMapsPaste(text);
+    const c = parseLatLng(text);
+    if (c) {
+      setLat(c.lat.toFixed(6));
+      setLng(c.lng.toFixed(6));
+      setMapsPaste('');
+      notify('Pin set ✓', `${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} — check the map preview below.`);
+    }
+  }
 
   function useMyLocation() {
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
@@ -161,6 +175,28 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: () 
 
       {geofenceEnabled && (
         <>
+          {/* The Google Maps way: find the site there, paste the link here. */}
+          <View style={styles.coordRow}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="Paste Google Maps link or coordinates…"
+              placeholderTextColor={colors.textTertiary}
+              value={mapsPaste}
+              onChangeText={applyMapsPaste}
+              autoCapitalize="none"
+            />
+            <Pressable
+              style={styles.locBtn}
+              onPress={() => Linking.openURL(searchUrl(address.trim() || `${lat},${lng}`))}
+            >
+              <Feather name="map" size={16} color={colors.primary} />
+              <Text style={styles.locBtnText}>Open Google Maps</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.mapsHint}>
+            Find the site in Google Maps → right-click the spot → copy the coordinates (or the link) → paste above.
+          </Text>
+
           <View style={styles.coordRow}>
             <TextInput style={[styles.input, { flex: 1 }]} placeholder="Latitude" placeholderTextColor={colors.textTertiary} value={lat} onChangeText={setLat} keyboardType="numbers-and-punctuation" />
             <TextInput style={[styles.input, { flex: 1 }]} placeholder="Longitude" placeholderTextColor={colors.textTertiary} value={lng} onChangeText={setLng} keyboardType="numbers-and-punctuation" />
@@ -172,6 +208,9 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: () 
               <Text style={styles.locBtnText}>Use my location</Text>
             </Pressable>
           </View>
+
+          {/* Live map preview (web office) — see the pin before saving. */}
+          <MapPreview lat={parseFloat(lat)} lng={parseFloat(lng)} />
         </>
       )}
 
@@ -184,6 +223,35 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: () 
         {busy ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.buttonText}>{project ? 'Save changes' : 'Create project'}</Text>}
       </Pressable>
     </View>
+  );
+}
+
+/**
+ * Live Google Maps preview of the geofence pin. Web (where projects are
+ * set up) renders the keyless embed iframe; native offers an open-in-Maps
+ * link instead.
+ */
+function MapPreview({ lat, lng }: { lat: number; lng: number }) {
+  const valid = !Number.isNaN(lat) && !Number.isNaN(lng) && (lat !== 0 || lng !== 0) &&
+    Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  if (!valid) return null;
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.mapPreview}>
+        {createElement('iframe', {
+          src: embedUrl(lat, lng),
+          style: { border: 0, width: '100%', height: '100%' },
+          loading: 'lazy',
+          referrerPolicy: 'no-referrer-when-downgrade',
+        })}
+      </View>
+    );
+  }
+  return (
+    <Pressable style={styles.locBtn} onPress={() => Linking.openURL(searchUrl(`${lat},${lng}`))}>
+      <Feather name="map-pin" size={16} color={colors.primary} />
+      <Text style={styles.locBtnText}>Preview pin in Google Maps</Text>
+    </Pressable>
   );
 }
 
@@ -214,6 +282,14 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: spacing.sm },
   label: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.textSecondary },
   coordRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  mapsHint: {
+    fontSize: typography.sizes.xs, color: colors.textTertiary,
+    marginBottom: spacing.sm, marginTop: -2,
+  },
+  mapPreview: {
+    height: 260, borderRadius: radii.md, overflow: 'hidden',
+    borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm,
+  },
   locBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md,
     paddingVertical: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary,

@@ -16,6 +16,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { router } from 'expo-router';
 import { notify } from '../../src/lib/notify';
@@ -39,6 +40,7 @@ import {
   clockInWithOfflineFallback, clockOutLocalShift, getLocalOpenShift, type LocalShift,
 } from '../../src/lib/attendance';
 import { flush } from '../../src/lib/offlineQueue';
+import { directionsUrl } from '../../src/lib/maps';
 import { useT } from '../../src/contexts/I18nContext';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { Project, AttendanceRecord } from '../../src/types';
@@ -231,6 +233,14 @@ export default function ClockScreen() {
                       </View>
                     )}
                   </View>
+                  {/* Google Maps turn-by-turn to the site */}
+                  <Pressable
+                    hitSlop={10}
+                    style={styles.directionsBtn}
+                    onPress={() => Linking.openURL(directionsUrl(p))}
+                  >
+                    <Feather name="navigation" size={16} color={colors.primary} />
+                  </Pressable>
                   {selectedId === p.id && (
                     <Feather name="check-circle" size={20} color={colors.primary} />
                   )}
@@ -369,6 +379,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   gpsBadgeText: { fontSize: typography.sizes.xs, color: colors.primary, fontWeight: typography.weights.medium },
+  directionsBtn: {
+    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.primarySoft, marginRight: spacing.sm,
+  },
 
   bigButton: {
     marginTop: spacing.xl,

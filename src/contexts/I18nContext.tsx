@@ -89,6 +89,9 @@ const PA: Record<string, string> = {
   'Now do your FLHA — it takes a minute.': 'ਹੁਣ ਆਪਣਾ FLHA ਭਰੋ — ਇੱਕ ਮਿੰਟ ਲੱਗਦਾ ਹੈ।',
   'Last step: quick end-of-day check — 30 seconds.': 'ਆਖਰੀ ਕੰਮ: ਦਿਨ ਦੇ ਅੰਤ ਦੀ ਜਾਂਚ — 30 ਸਕਿੰਟ।',
   'FLHA not done today — tap to do it now': 'ਅੱਜ ਦਾ FLHA ਨਹੀਂ ਹੋਇਆ — ਹੁਣੇ ਕਰਨ ਲਈ ਦਬਾਓ',
+  // Profile / sites
+  'My Sites': 'ਮੇਰੀਆਂ ਸਾਈਟਾਂ',
+  'Tap for Google Maps directions': 'ਰਸਤੇ ਲਈ ਦਬਾਓ (Google Maps)',
   // My Hours
   'approved for pay': 'ਤਨਖਾਹ ਲਈ ਮਨਜ਼ੂਰ',
   'waiting for approval': 'ਮਨਜ਼ੂਰੀ ਦੀ ਉਡੀਕ ਵਿੱਚ',
