@@ -156,7 +156,15 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: () 
       }
       onDone();
     } catch (err: any) {
-      notify('Save failed', err.message);
+      const msg = String(err?.message ?? '');
+      if (msg.toLowerCase().includes('permission')) {
+        notify(
+          'Your account can’t do this',
+          `You are signed in as ${me?.email ?? 'unknown'} (${me?.role ?? '?'}). Creating/editing projects needs an ADMIN account — check Users → your account → Account type, and make sure you're not on a look-alike email.`,
+        );
+      } else {
+        notify('Save failed', msg);
+      }
     } finally {
       setBusy(false);
     }

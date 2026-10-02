@@ -93,6 +93,11 @@ export default function AdminDashboard() {
           <View>
             <Text style={styles.greeting}>Office Dashboard</Text>
             <Text style={styles.name}>{user?.displayName ?? 'Admin'}</Text>
+            {/* Which account am I actually on? Ends the "insufficient
+                permissions" mystery — view-only managers see it here. */}
+            <Text style={[styles.roleLine, user?.role === 'admin' ? { color: colors.success } : { color: colors.warning }]}>
+              {user?.email} · {user?.role === 'admin' ? 'ADMIN — full access' : 'MANAGER — view only'}
+            </Text>
           </View>
           <Pressable hitSlop={8} onPress={signOut}>
             <Feather name="log-out" size={22} color={colors.textSecondary} />
@@ -164,6 +169,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   greeting: { color: colors.textSecondary, fontSize: typography.sizes.sm },
+  roleLine: { fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold, marginTop: 2 },
   name: {
     color: colors.text,
     fontSize: typography.sizes['2xl'],

@@ -24,6 +24,9 @@ import {
   STAGES, STAGE_LABELS, PHASE_TEMPLATES, computeStageChecks, stageIndex,
   type Stage, type StageCheck, type Phase,
 } from '../../src/lib/lifecycle';
+import {
+  HubTabBar, PhotosTab, DocsTab, FormsTab, PunchTab, LogsTab, CrewTab, type HubTab,
+} from '../../src/components/ProjectHub';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { Project } from '../../src/types';
 
@@ -38,6 +41,7 @@ export default function ProjectLifecycle() {
   const [busy, setBusy] = useState(false);
   const [clients, setClients] = useState<Array<{ id: string; company: string }>>([]);
   const [valueDraft, setValueDraft] = useState('');
+  const [hubTab, setHubTab] = useState<HubTab>('lifecycle');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -194,6 +198,19 @@ export default function ProjectLifecycle() {
         <View style={{ width: 22 }} />
       </View>
 
+      {/* Project hub — everything about this job, one tab away. */}
+      <HubTabBar active={hubTab} onChange={setHubTab} />
+
+      {hubTab !== 'lifecycle' ? (
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {hubTab === 'photos' && <PhotosTab projectId={project.id} />}
+          {hubTab === 'docs' && <DocsTab project={project} />}
+          {hubTab === 'forms' && <FormsTab projectId={project.id} />}
+          {hubTab === 'punch' && <PunchTab projectId={project.id} />}
+          {hubTab === 'logs' && <LogsTab projectId={project.id} />}
+          {hubTab === 'crew' && <CrewTab projectId={project.id} />}
+        </ScrollView>
+      ) : (
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Stage stepper */}
         <View style={styles.stepper}>
@@ -342,6 +359,7 @@ export default function ProjectLifecycle() {
           </>
         )}
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
