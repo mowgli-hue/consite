@@ -28,8 +28,15 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { flush, onQueueChange } from '../../src/lib/offlineQueue';
 import { useT } from '../../src/contexts/I18nContext';
 import { DailyBriefing } from '../../src/components/DailyBriefing';
+import { NextStep } from '../../src/components/NextStep';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { DashboardModule } from '../../src/types';
+
+/**
+ * The four tools a worker actually uses daily — rendered BIG. Everything
+ * else lives behind "More tools" so the home screen is never a wall.
+ */
+const BIG_FOUR = ['clock', 'scan', 'tasks', 'timesheet'];
 
 const DEFAULT_MODULES: DashboardModule[] = [
   { id: 'clock', label: 'Clock In / Out', icon: 'clock', route: '/clock', order: 1, visible: true, requiredPermissions: [], subtitle: 'GPS-verified' },
@@ -73,6 +80,7 @@ export default function WorkerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [notices, setNotices] = useState<WorkerNotice[]>([]);
   const [pendingSync, setPendingSync] = useState(0);
+  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     flush().catch(() => {}); // sync anything captured offline as soon as we're home
@@ -155,6 +163,9 @@ export default function WorkerDashboard() {
           </Pressable>
         )}
 
+        {/* THE one thing to do right now — the app decides, the worker taps. */}
+        <NextStep />
+
         <DailyBriefing />
 
         {notices.map((n) => (
@@ -170,8 +181,40 @@ export default function WorkerDashboard() {
           </View>
         ))}
 
-        {SECTION_ORDER.map((section) => {
-          const inSection = modules.filter((m) => (SECTION_OF[m.id] ?? 'More') === section);
+        {/* The big four — large targets, no hunting. */}
+        <View style={styles.grid}>
+          {BIG_FOUR.map((id) => {
+            const m = modules.find((x) => x.id === id);
+            if (!m) return null;
+            return (
+              <Pressable
+                key={m.id}
+                style={({ pressed }) => [styles.card, styles.bigCard, pressed && styles.cardPressed]}
+                onPress={() => {
+                  const pid = user?.projectIds?.[0];
+                  const route = pid ? m.route.replace('sample-project-1', pid) : m.route;
+                  router.push(route as any);
+                }}
+              >
+                <View style={[styles.iconWrap, styles.bigIconWrap]}>
+                  <Feather name={iconFor(m.icon)} size={30} color={colors.primary} />
+                </View>
+                <Text style={styles.bigCardLabel}>{t(m.label)}</Text>
+                {m.subtitle && <Text style={styles.cardSubtitle}>{t(m.subtitle)}</Text>}
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Everything else stays one tap away, not in the face. */}
+        <Pressable style={styles.moreToggle} onPress={() => setShowMore((v) => !v)}>
+          <Feather name={showMore ? 'chevron-up' : 'chevron-down'} size={18} color={colors.primary} />
+          <Text style={styles.moreToggleText}>{showMore ? t('Show less') : t('More tools')}</Text>
+        </Pressable>
+
+        {showMore && SECTION_ORDER.map((section) => {
+          const inSection = modules.filter((m) =>
+            (SECTION_OF[m.id] ?? 'More') === section && !BIG_FOUR.includes(m.id));
           if (inSection.length === 0) return null;
           return (
             <View key={section}>
@@ -288,6 +331,17 @@ const styles = StyleSheet.create({
     ...shadows.card,
   },
   cardPressed: { opacity: 0.7 },
+  bigCard: { paddingVertical: spacing.xl, alignItems: 'center' },
+  bigIconWrap: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  bigCardLabel: {
+    fontSize: typography.sizes.lg, fontWeight: typography.weights.bold,
+    color: colors.text, marginTop: spacing.sm, textAlign: 'center',
+  },
+  moreToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    paddingVertical: spacing.lg, marginTop: spacing.sm,
+  },
+  moreToggleText: { color: colors.primary, fontWeight: typography.weights.semibold, fontSize: typography.sizes.md },
   iconWrap: {
     width: 40,
     height: 40,

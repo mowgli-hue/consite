@@ -89,6 +89,16 @@ const PA: Record<string, string> = {
   'Now do your FLHA — it takes a minute.': 'ਹੁਣ ਆਪਣਾ FLHA ਭਰੋ — ਇੱਕ ਮਿੰਟ ਲੱਗਦਾ ਹੈ।',
   'Last step: quick end-of-day check — 30 seconds.': 'ਆਖਰੀ ਕੰਮ: ਦਿਨ ਦੇ ਅੰਤ ਦੀ ਜਾਂਚ — 30 ਸਕਿੰਟ।',
   'FLHA not done today — tap to do it now': 'ਅੱਜ ਦਾ FLHA ਨਹੀਂ ਹੋਇਆ — ਹੁਣੇ ਕਰਨ ਲਈ ਦਬਾਓ',
+  // Next Step hero + simple home
+  'Start work': 'ਕੰਮ ਸ਼ੁਰੂ ਕਰੋ',
+  'Tap here when you get to the site': 'ਸਾਈਟ ਤੇ ਪਹੁੰਚ ਕੇ ਇੱਥੇ ਦਬਾਓ',
+  'Do today’s safety form': 'ਅੱਜ ਦਾ ਸੇਫਟੀ ਫਾਰਮ ਭਰੋ',
+  'takes one minute — AI fills most of it': 'ਇੱਕ ਮਿੰਟ ਲੱਗਦਾ ਹੈ — AI ਬਹੁਤਾ ਆਪੇ ਭਰ ਦਿੰਦਾ ਹੈ',
+  'You’re working': 'ਤੁਸੀਂ ਕੰਮ ਤੇ ਹੋ',
+  'Take a photo': 'ਫੋਟੋ ਖਿੱਚੋ',
+  'Finish work': 'ਛੁੱਟੀ ਕਰੋ',
+  'More tools': 'ਹੋਰ ਟੂਲ',
+  'Show less': 'ਘੱਟ ਦਿਖਾਓ',
   // Profile / sites
   'My Sites': 'ਮੇਰੀਆਂ ਸਾਈਟਾਂ',
   'Tap for Google Maps directions': 'ਰਸਤੇ ਲਈ ਦਬਾਓ (Google Maps)',
