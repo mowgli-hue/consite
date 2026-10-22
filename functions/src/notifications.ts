@@ -135,7 +135,10 @@ export const onWorkerAssigned = onDocumentCreated(
  * Phase completed → everyone knows automatically: office inbox entry +
  * in-app notice to every crew member (WhatsApp rides along when enabled).
  */
-export const onPhaseCompleted = onDocumentUpdated(
+// V2: a stale HTTPS function owns the original name in us-west1 (same as
+// onUserDeactivated) — fresh name deploys clean; delete the old one in
+// the Cloud Console at leisure.
+export const onPhaseCompletedV2 = onDocumentUpdated(
   { document: 'projects/{projectId}/phases/{phaseId}', secrets: WHATSAPP_SECRETS },
   async (event) => {
     const before = event.data?.before.data();
