@@ -10,17 +10,45 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, ActivityIndicator, Image, Linking, ScrollView,
+  View, Text, StyleSheet, Pressable, ActivityIndicator, Image, Linking, Platform, ScrollView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { collection, doc, getDoc, getDocs, limit, orderBy, query } from 'firebase/firestore';
-import { getDownloadURL, ref } from 'firebase/storage';
+import { addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadString } from 'firebase/storage';
 
 import { db, storage } from '../lib/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import { notify } from '../lib/notify';
 import { tsToMs } from '../lib/attendance';
 import type { Project } from '../types';
 import { colors, spacing, radii, typography, shadows } from '../theme';
+
+/** Web-only file picker → base64. The office adds photos/drawings from desktop. */
+function pickFileWeb(accept: string): Promise<{ name: string; base64: string; mime: string } | null> {
+  return new Promise((resolve) => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') { resolve(null); return; }
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = accept;
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) { resolve(null); return; }
+      const r = new FileReader();
+      r.onload = () => resolve({ name: file.name, base64: String(r.result).split(',')[1] ?? '', mime: file.type || 'application/octet-stream' });
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(file);
+    };
+    input.click();
+  });
+}
+
+function AddButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable style={styles.addBtn} onPress={onPress}>
+      <Feather name="plus" size={16} color={colors.primary} />
+      <Text style={styles.addBtnText}>{label}</Text>
+    </Pressable>
+  );
+}
 
 export type HubTab = 'lifecycle' | 'photos' | 'docs' | 'forms' | 'punch' | 'logs' | 'crew';
 
@@ -71,7 +99,25 @@ async function openStoragePath(path?: string | null, url?: string | null) {
 interface Photo { id: string; url?: string; caption: string; by?: string; atMs?: number }
 
 export function PhotosTab({ projectId }: { projectId: string }) {
+  const { user } = useAuth();
   const [photos, setPhotos] = useState<Photo[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function addPhoto() {
+    const f = await pickFileWeb('image/*');
+    if (!f) { notify('Desktop only', 'Add photos here from a desktop browser — crews add them with AI Scan and Work Update on the phone.'); return; }
+    setBusy(true);
+    try {
+      const storagePath = `projects/${projectId}/media/office-${Date.now()}/${f.name.replace(/[^\w.-]+/g, '_')}`;
+      await uploadString(ref(storage, storagePath), f.base64, 'base64', { contentType: f.mime });
+      await addDoc(collection(db, 'projects', projectId, 'media'), {
+        projectId, storagePath, type: 'image',
+        caption: f.name, uploadedBy: user?.uid ?? 'office', uploadedAt: Date.now(),
+      });
+      await load();
+    } catch (e) { notify('Upload failed', e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
 
   const load = useCallback(async () => {
     const out: Photo[] = [];
@@ -98,9 +144,19 @@ export function PhotosTab({ projectId }: { projectId: string }) {
   useEffect(() => { load(); }, [load]);
 
   if (photos === null) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
-  if (photos.length === 0) return <Empty text="No photos yet — AI Scan and Work Updates land here." />;
+  const canAdd = user?.role === 'admin';
+  if (photos.length === 0) {
+    return (
+      <View>
+        {canAdd && <AddButton label={busy ? 'Uploading…' : 'Add photo'} onPress={addPhoto} />}
+        <Empty text="No photos yet — AI Scan and Work Updates from the crew land here, or add one above." />
+      </View>
+    );
+  }
 
   return (
+    <View>
+      {canAdd && <AddButton label={busy ? 'Uploading…' : 'Add photo'} onPress={addPhoto} />}
     <View style={styles.photoGrid}>
       {photos.filter((p) => p.url).map((p) => (
         <Pressable key={p.id} style={styles.photoCard} onPress={() => p.url && Linking.openURL(p.url)}>
@@ -110,6 +166,7 @@ export function PhotosTab({ projectId }: { projectId: string }) {
         </Pressable>
       ))}
     </View>
+    </View>
   );
 }
 
@@ -118,7 +175,27 @@ export function PhotosTab({ projectId }: { projectId: string }) {
 interface DocRow { id: string; title: string; sub: string; icon: keyof typeof Feather.glyphMap; path?: string }
 
 export function DocsTab({ project }: { project: Project }) {
+  const { user } = useAuth();
   const [rows, setRows] = useState<DocRow[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function addDrawing() {
+    const f = await pickFileWeb('application/pdf,image/*');
+    if (!f) { notify('Desktop only', 'Upload drawings here from a desktop browser — foremen can also photograph them on site (Site Drawings).'); return; }
+    setBusy(true);
+    try {
+      const planId = `office-${Date.now()}`;
+      const storagePath = `projects/${project.id}/plans/${planId}/${f.name.replace(/[^\w.-]+/g, '_')}`;
+      await uploadString(ref(storage, storagePath), f.base64, 'base64', { contentType: f.mime });
+      await addDoc(collection(db, 'projects', project.id, 'plans'), {
+        projectId: project.id, name: f.name, storagePath,
+        fileType: f.mime.includes('pdf') ? 'pdf' : 'image',
+        version: 1, uploadedBy: user?.uid ?? 'office', uploadedAt: Date.now(),
+      });
+      await load();
+    } catch (e) { notify('Upload failed', e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
 
   const load = useCallback(async () => {
     const out: DocRow[] = [];
@@ -142,9 +219,18 @@ export function DocsTab({ project }: { project: Project }) {
   useEffect(() => { load(); }, [load]);
 
   if (rows === null) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
-  if (rows.length === 0) return <Empty text="No documents yet — drawings and the signed contract show here." />;
+  const canAdd = user?.role === 'admin';
+  if (rows.length === 0) {
+    return (
+      <View>
+        {canAdd && <AddButton label={busy ? 'Uploading…' : 'Upload drawing / document'} onPress={addDrawing} />}
+        <Empty text="No documents yet — upload a drawing above, or attach the signed contract on the Lifecycle tab (Contract stage)." />
+      </View>
+    );
+  }
   return (
     <View>
+      {canAdd && <AddButton label={busy ? 'Uploading…' : 'Upload drawing / document'} onPress={addDrawing} />}
       {rows.map((r) => (
         <Pressable key={r.id} style={styles.rowCard} onPress={() => openStoragePath(r.path)}>
           <Feather name={r.icon} size={18} color={colors.primary} />
@@ -406,4 +492,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   crewAvatarText: { color: colors.primary, fontWeight: typography.weights.bold },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radii.md, borderStyle: 'dashed',
+    paddingVertical: spacing.md, marginBottom: spacing.md,
+  },
+  addBtnText: { color: colors.primary, fontWeight: typography.weights.semibold, fontSize: typography.sizes.sm },
 });

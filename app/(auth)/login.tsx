@@ -63,6 +63,7 @@ export default function LoginScreen() {
               placeholder="you@company.com"
               placeholderTextColor={colors.textTertiary}
               editable={!busy}
+              returnKeyType="next"
             />
 
             <Text style={[styles.label, { marginTop: spacing.lg }]}>Password</Text>
@@ -74,6 +75,8 @@ export default function LoginScreen() {
               placeholder="••••••••"
               placeholderTextColor={colors.textTertiary}
               editable={!busy}
+              returnKeyType="go"
+              onSubmitEditing={handleSubmit}
             />
 
             <Pressable

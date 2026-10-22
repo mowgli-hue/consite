@@ -46,6 +46,10 @@ export default function ProjectLifecycle() {
   const load = useCallback(async () => {
     if (!id) return;
     setChecks(null);
+    // Each step is labelled so a failure says WHAT failed — "Load failed:
+    // Missing or insufficient permissions" with no subject is undebuggable
+    // (it hid a never-deployed rules file for three months).
+    let step = 'project';
     try {
       const snap = await getDoc(doc(db, 'projects', id));
       if (!snap.exists()) { notify('Not found', 'Project does not exist.'); return; }
@@ -53,10 +57,12 @@ export default function ProjectLifecycle() {
       setProject(p);
       setValueDraft(p.contractValue ? String(p.contractValue) : '');
 
+      step = 'build phases';
       const ph = await getDocs(query(collection(db, 'projects', id, 'phases'), orderBy('order')));
       const phaseList = ph.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Phase, 'id'>) }));
       setPhases(phaseList);
 
+      step = 'stage checks';
       setChecks(await computeStageChecks(p, phaseList));
 
       try {
@@ -64,7 +70,14 @@ export default function ProjectLifecycle() {
         setClients(cs.docs.map((d) => ({ id: d.id, company: (d.data() as { company?: string }).company ?? d.id })));
       } catch { /* CRM may be empty */ }
     } catch (err: unknown) {
-      notify('Load failed', (err as Error).message);
+      const msg = (err as Error).message ?? String(err);
+      setChecks([]); // stop the spinner — the gate stays closed (empty = not passing)
+      notify(
+        `Could not load: ${step}`,
+        msg.toLowerCase().includes('permission')
+          ? `${msg}\n\nIf this happens on an admin account, the Firestore rules on the server are out of date — run the firebase deploy.`
+          : msg,
+      );
     }
   }, [id]);
 
@@ -246,6 +259,19 @@ export default function ProjectLifecycle() {
             <Text style={styles.sectionLabel}>{STAGE_LABELS[stage]} — what the app can verify</Text>
             {checks === null ? (
               <ActivityIndicator color={colors.primary} />
+            ) : checks.length === 0 ? (
+              // Every stage has at least one check — empty means the reads
+              // failed. Say so instead of showing a blank list under a
+              // greyed-out button.
+              <View style={[styles.checkRow, styles.checkRowFail]}>
+                <Feather name="wifi-off" size={18} color={colors.danger} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.checkLabel}>Couldn’t verify this stage</Text>
+                  <Text style={styles.checkInstruction}>
+                    The checklist couldn’t be read (connection or server rules). Leave and reopen this project to retry — the Advance button stays locked until checks pass.
+                  </Text>
+                </View>
+              </View>
             ) : (
               checks.map((c) => (
                 <View key={c.id} style={[styles.checkRow, !c.pass && styles.checkRowFail]}>
