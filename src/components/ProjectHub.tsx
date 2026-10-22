@@ -261,7 +261,10 @@ export function FormsTab({ projectId }: { projectId: string }) {
       const uids = new Map<string, string>();
       const out: SubRow[] = [];
       for (const d of snap.docs) {
-        const a = d.data() as { schemaId?: string; submittedBy?: string; submittedAt?: unknown; pdfPath?: string };
+        // The records pipeline writes `pdfStoragePath` (see functions/src/
+        // records.ts) — reading `pdfPath` here showed "PDF rendering…"
+        // forever on forms whose PDFs existed all along.
+        const a = d.data() as { schemaId?: string; submittedBy?: string; submittedAt?: unknown; pdfStoragePath?: string; pdfPath?: string };
         let by = a.submittedBy;
         if (by) {
           if (!uids.has(by)) {
@@ -270,7 +273,7 @@ export function FormsTab({ projectId }: { projectId: string }) {
           }
           by = uids.get(by);
         }
-        out.push({ id: d.id, schemaId: a.schemaId ?? 'form', by, atMs: tsToMs(a.submittedAt), pdfPath: a.pdfPath });
+        out.push({ id: d.id, schemaId: a.schemaId ?? 'form', by, atMs: tsToMs(a.submittedAt), pdfPath: a.pdfStoragePath ?? a.pdfPath });
       }
       setRows(out);
     } catch (e) {
@@ -400,8 +403,9 @@ export function CrewTab({ projectId }: { projectId: string }) {
   const load = useCallback(async () => {
     try {
       const snap = await getDocs(collection(db, 'projects', projectId, 'members'));
-      const out: CrewRow[] = [];
-      for (const m of snap.docs) {
+      // Fetch contact info for the whole crew IN PARALLEL — sequential
+      // awaits made this tab take 5–8s while every other tab was instant.
+      const out: CrewRow[] = await Promise.all(snap.docs.map(async (m) => {
         const md = m.data() as { role?: string; displayName?: string };
         let name = md.displayName ?? m.id.slice(0, 8);
         let phone: string | undefined; let email: string | undefined;
@@ -409,12 +413,12 @@ export function CrewTab({ projectId }: { projectId: string }) {
           const u = (await getDoc(doc(db, 'users', m.id))).data() as { displayName?: string; phone?: string; email?: string } | undefined;
           if (u) { name = u.displayName ?? name; phone = u.phone; email = u.email; }
         } catch { /* worker-level viewers can't read users — name from member doc */ }
-        out.push({
+        return {
           uid: m.id, name,
-          role: ['foreman', 'lead-foreman', 'supervisor'].includes(md.role ?? '') ? 'Foreman' : 'Worker',
+          role: ['foreman', 'lead-foreman', 'supervisor'].includes(md.role ?? '') ? 'Foreman' as const : 'Worker' as const,
           phone, email,
-        });
-      }
+        };
+      }));
       out.sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'Foreman' ? -1 : 1));
       setRows(out);
     } catch { setRows([]); }
