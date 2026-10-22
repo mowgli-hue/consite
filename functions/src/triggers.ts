@@ -16,7 +16,10 @@ import { logger } from 'firebase-functions';
  * Revoking forces re-auth within ~1h (ID token expiry); the client also
  * signs out instantly via its profile listener.
  */
-export const onUserDeactivated = onDocumentUpdated('users/{uid}', async (event) => {
+// Named V2 because a stale HTTPS function already occupies the original
+// name in us-west1 and GCP refuses in-place type changes. The old
+// `onUserDeactivated` can be deleted from the Cloud Console at leisure.
+export const onUserDeactivatedV2 = onDocumentUpdated('users/{uid}', async (event) => {
   const before = event.data?.before.data();
   const after = event.data?.after.data();
   if (!before || !after) return;

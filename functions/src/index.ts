@@ -15,7 +15,7 @@ initializeApp();
 export { createWorker } from './admin';
 
 // Firestore triggers
-export { onAttendanceCreated, onSubmissionCreated, onUserDeactivated } from './triggers';
+export { onAttendanceCreated, onSubmissionCreated, onUserDeactivatedV2 } from './triggers';
 
 // Notifications (admin inbox + worker alerts)
 export { onDeficiencyCreated, missedClockoutSweep, onWorkerAssigned, onPinAssigned, onPhaseCompleted } from './notifications';
