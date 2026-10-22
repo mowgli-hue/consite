@@ -4,7 +4,7 @@
   "private": true,
   "main": "lib/index.js",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "scripts": {
     "build": "tsc",
@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "typescript": "^5.4.0",
-    "@types/node": "^20.12.0",
+    "@types/node": "^22.0.0",
     "@types/pdfkit": "^0.13.4"
   }
 }
