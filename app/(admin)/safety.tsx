@@ -180,7 +180,10 @@ export default function SafetyCenter() {
               <Text style={[styles.statNumber, worst !== null && worst < 70 && { color: colors.danger }]}>
                 {worst !== null ? `${worst}%` : '–'}
               </Text>
-              <Text style={styles.statLabel}>Worst site FLHA</Text>
+              {/* A dash must say why — "–" read as "fine" in QA. */}
+              <Text style={styles.statLabel}>
+                {worst !== null ? 'Worst site FLHA' : 'FLHA rate — no work logged yet'}
+              </Text>
             </View>
             <View style={styles.stat}>
               <Text style={[styles.statNumber, totalDefs > 0 && { color: colors.warning }]}>{totalDefs}</Text>
@@ -191,7 +194,9 @@ export default function SafetyCenter() {
                 {certs ? certs.expired + certs.expiring30 : '–'}
               </Text>
               <Text style={styles.statLabel}>
-                Certs expired/≤30d{certs && certs.expired > 0 ? ` (${certs.expired} lapsed)` : ''}
+                {certs === null
+                  ? 'Certs — couldn’t load, tap to open Compliance'
+                  : `Certs expired/≤30d${certs.expired > 0 ? ` (${certs.expired} lapsed)` : ''}`}
               </Text>
             </Pressable>
           </View>

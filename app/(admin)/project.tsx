@@ -378,9 +378,15 @@ export default function ProjectLifecycle() {
                 <Text style={styles.advanceText}>
                   {allPass
                     ? stage === 'closeout' ? 'Close out project' : `Advance to ${STAGE_LABELS[STAGES[stageIndex(stage) + 1] as Stage] ?? 'next'}`
-                    : 'Clear the checklist to advance'}
+                    : `Finish ${(checks ?? []).filter((c) => !c.pass).length || 'the'} item${(checks ?? []).filter((c) => !c.pass).length === 1 ? '' : 's'} above to advance`}
                 </Text>
               </Pressable>
+            )}
+            {isAdmin && !allPass && checks !== null && checks.length > 0 && (
+              // Say WHY it's locked, right under the button (UX audit H3).
+              <Text style={styles.advanceWhy}>
+                Locked until every check above passes — each red item says exactly how to clear it.
+              </Text>
             )}
           </>
         )}
@@ -465,8 +471,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
     backgroundColor: colors.success, borderRadius: radii.lg, paddingVertical: spacing.lg,
   },
-  advanceBtnDisabled: { backgroundColor: colors.borderStrong },
+  // Disabled ≠ invisible: dark enough to read in sunlight (UX audit F2).
+  advanceBtnDisabled: { backgroundColor: colors.textTertiary },
   advanceText: { color: colors.textInverse, fontWeight: typography.weights.bold, fontSize: typography.sizes.md },
+  advanceWhy: {
+    marginTop: spacing.sm, textAlign: 'center',
+    color: colors.textSecondary, fontSize: typography.sizes.sm,
+  },
 
   archived: { alignItems: 'center', padding: spacing['3xl'], gap: spacing.md },
   archivedText: { color: colors.textSecondary, textAlign: 'center' },

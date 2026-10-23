@@ -19,6 +19,7 @@ import {
   STAGES, STAGE_LABELS, computeStageChecks, stageIndex,
   type Phase, type StageCheck,
 } from '../lib/lifecycle';
+import { LoadingState } from './LoadingState';
 import type { Project } from '../types';
 import { colors, spacing, radii, typography, shadows } from '../theme';
 
@@ -65,7 +66,7 @@ export default function ProjectPortfolio({ reloadKey }: { reloadKey?: number }) 
   useEffect(() => { load(); }, [load, reloadKey]);
 
   if (items === null) {
-    return <Text style={styles.loading}>Checking every job…</Text>;
+    return <LoadingState rows={2} onRetry={load} />;
   }
   if (items.length === 0) return null;
 

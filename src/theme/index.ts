@@ -11,10 +11,11 @@ export const colors = {
   surface: '#FFFFFF',
   surfaceAlt: '#F4F2EF',
 
-  // Text — warm charcoal
-  text: '#1C1917',
-  textSecondary: '#78716C',
-  textTertiary: '#A8A29E',
+  // Text — warm charcoal, tuned for SUNLIGHT (UX audit: old secondary
+  // #78716C was 4.9:1 and tertiary #A8A29E a failing 2.4:1).
+  text: '#1C1917',          // 16.9:1 on background
+  textSecondary: '#57534E', // ~7.4:1 — readable outdoors
+  textTertiary: '#6B6661',  // ~5.6:1 — meta text, still AA
   textInverse: '#FFFFFF',
 
   // Borders / dividers
@@ -60,14 +61,16 @@ export const radii = {
 export const typography = {
   // Native font stack — uses SF Pro on iOS, Roboto on Android.
   family: undefined,
+  // Sized for a phone held at arm's length in gloves and glare —
+  // body (md) 16, secondary (sm) 14, nothing below 12.
   sizes: {
-    xs: 11,
-    sm: 13,
-    md: 15,
-    lg: 17,
-    xl: 20,
-    '2xl': 24,
-    '3xl': 30,
+    xs: 12,
+    sm: 14,
+    md: 16,
+    lg: 18,
+    xl: 22,
+    '2xl': 26,
+    '3xl': 32,
   },
   weights: {
     regular: '400' as const,
@@ -75,6 +78,12 @@ export const typography = {
     semibold: '600' as const,
     bold: '700' as const,
   },
+} as const;
+
+/** Minimum hit sizes — gloves. 48 is the floor, 56 for primary actions. */
+export const touch = {
+  min: 48,
+  primary: 56,
 } as const;
 
 export const shadows = {

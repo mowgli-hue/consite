@@ -18,6 +18,7 @@ import { getDownloadURL, ref, uploadString } from 'firebase/storage';
 
 import { db, storage } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { LoadingState } from './LoadingState';
 import { notify } from '../lib/notify';
 import { tsToMs } from '../lib/attendance';
 import type { Project } from '../types';
@@ -143,7 +144,7 @@ export function PhotosTab({ projectId }: { projectId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (photos === null) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
+  if (photos === null) return <LoadingState rows={3} onRetry={load} />;
   const canAdd = user?.role === 'admin';
   if (photos.length === 0) {
     return (
@@ -218,7 +219,7 @@ export function DocsTab({ project }: { project: Project }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (rows === null) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
+  if (rows === null) return <LoadingState rows={3} onRetry={load} />;
   const canAdd = user?.role === 'admin';
   if (rows.length === 0) {
     return (
@@ -294,7 +295,7 @@ export function FormsTab({ projectId }: { projectId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (rows === null) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
+  if (rows === null) return <LoadingState rows={3} onRetry={load} />;
   if (rows.length === 0) return <Empty text="No form submissions yet — FLHAs, QC checks and Daily Progress land here with their PDFs." />;
   return (
     <View>
@@ -334,7 +335,7 @@ export function PunchTab({ projectId }: { projectId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (rows === null) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
+  if (rows === null) return <LoadingState rows={3} onRetry={load} />;
   if (rows.length === 0) return <Empty text="Clean punch list — nothing reported." />;
   return (
     <View>
@@ -383,7 +384,7 @@ export function LogsTab({ projectId }: { projectId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (rows === null) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
+  if (rows === null) return <LoadingState rows={3} onRetry={load} />;
   if (rows.length === 0) return <Empty text="No daily logs yet — the foreman writes one per day (AI drafts it)." />;
   return (
     <View>
@@ -436,7 +437,7 @@ export function CrewTab({ projectId }: { projectId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (rows === null) return <ActivityIndicator color={colors.primary} style={styles.spinner} />;
+  if (rows === null) return <LoadingState rows={3} onRetry={load} />;
   if (rows.length === 0) return <Empty text="No crew assigned yet — assign from the Crew Board or Users." />;
   return (
     <View>

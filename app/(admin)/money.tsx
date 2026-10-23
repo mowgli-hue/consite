@@ -192,7 +192,7 @@ export default function AdminMoney() {
               <Text style={[styles.statNumber, (oldestWait ?? 0) > 7 && { color: colors.danger }]}>
                 {oldestWait !== null ? `${oldestWait}d` : '–'}
               </Text>
-              <Text style={styles.statLabel}>Longest waiting</Text>
+              <Text style={styles.statLabel}>{oldestWait !== null ? 'Longest waiting' : 'Longest waiting — queue is empty'}</Text>
             </View>
             <View style={styles.stat}>
               <Text style={styles.statNumber}>{fmtValue(valueInPlay) ?? '–'}</Text>

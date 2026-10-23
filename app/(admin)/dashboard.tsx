@@ -121,10 +121,9 @@ export default function AdminDashboard() {
 
         <Text style={styles.sectionLabel}>Jobs at a glance</Text>
         <ProjectPortfolio reloadKey={portfolioKey} />
-
-        <Section title="Today" modules={TODAY_MODULES} unread={unread} />
-        <Section title="Manage" modules={MANAGE_MODULES} unread={unread} />
-        <Section title="Coming soon" modules={SOON_MODULES} unread={unread} dim />
+        {/* The 13-tile nav grid is gone (UX audit N4) — the sidebar owns
+            navigation on desktop and the bottom bar owns it on phones.
+            The dashboard is for STATUS, not a second menu. */}
       </ScrollView>
     </SafeAreaView>
   );
