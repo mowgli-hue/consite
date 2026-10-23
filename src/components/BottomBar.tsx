@@ -32,7 +32,8 @@ export function BottomBar({ primary, more }: { primary: NavItem[]; more: NavItem
           const active = isActive(item);
           return (
             <Link key={item.route} href={item.route as never} asChild>
-              <Pressable accessibilityRole="link" style={styles.tab}>
+              {/* Single-object style only — see SideNav note on asChild. */}
+              <Pressable accessibilityRole="link" style={StyleSheet.flatten(styles.tab)}>
                 <Feather name={item.icon} size={22} color={active ? colors.primary : colors.textSecondary} />
                 <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{item.label}</Text>
               </Pressable>

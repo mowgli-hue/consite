@@ -7,7 +7,7 @@
  *   · 48px rows (F1), AA contrast (F2)
  */
 
-import { View, Text, StyleSheet, Pressable, useWindowDimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions, ScrollView, type ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Link, usePathname } from 'expo-router';
 
@@ -58,12 +58,14 @@ export function SideNav({ items, title }: { items: NavItem[]; title: string }) {
               const active = pathname === (item.match ?? item.route) ||
                 pathname.startsWith((item.match ?? item.route) + '/') ||
                 pathname === item.route.split('?')[0];
+              // Style passed as a FLATTENED single object: an array style
+              // forwarded through Link asChild can reach the DOM <a> as-is
+              // on web, and react-dom crashes setting style[0] on
+              // CSSStyleDeclaration ("indexed property setter").
+              const itemStyle = StyleSheet.flatten([styles.item, active && styles.itemActive]) as ViewStyle;
               return (
                 <Link key={item.route} href={item.route as never} asChild>
-                  <Pressable
-                    accessibilityRole="link"
-                    style={[styles.item, active && styles.itemActive]}
-                  >
+                  <Pressable accessibilityRole="link" style={itemStyle}>
                     <Feather name={item.icon} size={19} color={active ? colors.primary : colors.textSecondary} />
                     <Text style={[styles.itemText, active && styles.itemTextActive]}>{item.label}</Text>
                   </Pressable>
