@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import Constants from 'expo-constants';
@@ -21,7 +21,11 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 // Firebase v12+ auto-detects React Native and uses AsyncStorage for persistence
 // when @react-native-async-storage/async-storage is installed.
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Auto-detect when Firestore's streaming WebChannel is being broken by a
+// proxy and fall back to long-polling. QA saw repeated "database
+// connection" errors in the console and 15-20s first loads — the classic
+// symptom of the stream being killed and endlessly retried.
+export const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 

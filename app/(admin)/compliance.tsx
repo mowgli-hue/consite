@@ -149,9 +149,12 @@ export default function ComplianceScreen() {
           {expired.length === 0 && expiringSoon.length === 0 && (
             <View style={styles.allGood}>
               <Feather name="check-circle" size={32} color={colors.success} />
-              <Text style={styles.allGoodTitle}>All clear</Text>
+              {/* Scope the claim: this screen is cert EXPIRY only. "All
+                  clear" here while no site had a first-aid attendant read
+                  as a false safety sign-off (QA). */}
+              <Text style={styles.allGoodTitle}>No expiring certificates</Text>
               <Text style={styles.allGoodSub}>
-                No expired or expiring-soon certifications across your team.
+                Nothing expired or expiring within 30 days. This screen only tracks certificate dates — for site safety coverage (first aid, FLHA rates, deficiencies), see Safety Center.
               </Text>
             </View>
           )}

@@ -275,6 +275,16 @@ export function FormsTab({ projectId }: { projectId: string }) {
         }
         out.push({ id: d.id, schemaId: a.schemaId ?? 'form', by, atMs: tsToMs(a.submittedAt), pdfPath: a.pdfStoragePath ?? a.pdfPath });
       }
+      // Readable titles: "Field Level Hazard Assessment", not "flha-daily-v1".
+      const schemaIds = [...new Set(out.map((r) => r.schemaId))];
+      const titles = new Map<string, string>();
+      await Promise.all(schemaIds.map(async (sid) => {
+        try {
+          const s = (await getDoc(doc(db, 'forms', sid))).data() as { title?: string } | undefined;
+          if (s?.title) titles.set(sid, s.title);
+        } catch { /* keep the id */ }
+      }));
+      out.forEach((r) => { r.schemaId = titles.get(r.schemaId) ?? r.schemaId; });
       setRows(out);
     } catch (e) {
       setRows([]);
