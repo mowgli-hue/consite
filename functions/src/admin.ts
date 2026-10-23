@@ -9,7 +9,7 @@
 
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 
 interface CreateWorkerData {
@@ -83,6 +83,26 @@ export const createWorker = onCall<CreateWorkerData>(async (request) => {
     createdAt: Date.now(),
     createdBy: request.auth.uid,
   });
+
+  // Create the project-side membership HERE, atomically with the user —
+  // it used to be mirrored client-side after the callable returned, and
+  // an interrupted mirror left workers with projectIds but no member
+  // doc: every screen listed the site, every read was denied.
+  const batch = db.batch();
+  for (const pid of projectIds) {
+    batch.set(db.collection('projects').doc(pid).collection('members').doc(userRecord.uid), {
+      uid: userRecord.uid,
+      displayName,
+      role: 'worker',
+      permissions: ['worker.projects.view', 'worker.forms.submit', 'worker.templates.view', 'worker.media.upload'],
+      assignedAt: Date.now(),
+      assignedBy: request.auth.uid,
+    });
+    batch.update(db.collection('projects').doc(pid), {
+      memberUids: FieldValue.arrayUnion(userRecord.uid),
+    });
+  }
+  if (projectIds.length > 0) await batch.commit();
 
   logger.info(`Created ${role} ${userRecord.uid} by admin ${request.auth.uid}`);
   return { uid: userRecord.uid };

@@ -82,11 +82,15 @@ export default function ClockScreen() {
       let list: Project[] = [];
 
       if (projectIds.length > 0) {
+        // Each project fetched INDEPENDENTLY: one stale id (a site the
+        // worker was removed from, a deleted test project) used to reject
+        // the whole Promise.all and render "No projects assigned" even
+        // though the real site loaded fine.
         const docs = await Promise.all(
-          projectIds.map((id) => getDoc(doc(db, 'projects', id)))
+          projectIds.map((id) => getDoc(doc(db, 'projects', id)).catch(() => null))
         );
         list = docs
-          .filter((d) => d.exists())
+          .filter((d): d is NonNullable<typeof d> => !!d && d.exists())
           .map((d) => ({ id: d.id, ...(d.data() as Omit<Project, 'id'>) }))
           .filter((p) => p.active);
       } else {

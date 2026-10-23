@@ -70,15 +70,18 @@ export default function WorkerProfile() {
           storagePath: d.data().storagePath as string | undefined,
         })));
       } catch { setDocs([]); }
-      // My sites — for one-tap Google Maps directions.
+      // My sites — for one-tap Google Maps directions. Per-site fetch so
+      // one stale projectId can't blank the whole list.
       try {
         const loaded: MySite[] = [];
         for (const pid of user.projectIds ?? []) {
-          const p = await getDoc(doc(db, 'projects', pid));
-          if (p.exists()) {
-            const d = p.data() as Project;
-            if (d.active !== false) loaded.push({ id: p.id, name: d.name, address: d.address, geofence: d.geofence });
-          }
+          try {
+            const p = await getDoc(doc(db, 'projects', pid));
+            if (p.exists()) {
+              const d = p.data() as Project;
+              if (d.active !== false) loaded.push({ id: p.id, name: d.name, address: d.address, geofence: d.geofence });
+            }
+          } catch { /* unreadable (stale assignment) — skip this one */ }
         }
         setSites(loaded);
       } catch { setSites([]); }
