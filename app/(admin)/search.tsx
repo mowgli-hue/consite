@@ -64,6 +64,10 @@ export default function SearchScreen() {
     const items: HistoryItem[] = [];
     const fmtBy = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
+    // The four sources load IN PARALLEL — sequential awaits made this
+    // screen take 6+ seconds before anything rendered.
+    await Promise.all([
+    (async () => {
     try {
       const wl = await getDocs(query(collection(db, 'projects', projectId, 'workLog'), orderBy('createdAt', 'desc'), limit(400)));
       for (const d of wl.docs) {
@@ -76,7 +80,8 @@ export default function SearchScreen() {
         });
       }
     } catch { /* skip */ }
-
+    })(),
+    (async () => {
     try {
       const subs = await getDocs(query(collection(db, 'projects', projectId, 'submissions'), orderBy('submittedAt', 'desc'), limit(400)));
       for (const d of subs.docs) {
@@ -93,7 +98,8 @@ export default function SearchScreen() {
         });
       }
     } catch { /* skip */ }
-
+    })(),
+    (async () => {
     try {
       const defs = await getDocs(query(collection(db, 'projects', projectId, 'deficiencies'), orderBy('reportedAt', 'desc'), limit(400)));
       for (const d of defs.docs) {
@@ -105,10 +111,11 @@ export default function SearchScreen() {
         });
       }
     } catch { /* skip */ }
-
+    })(),
+    (async () => {
     try {
       const plans = await getDocs(collection(db, 'projects', projectId, 'plans'));
-      for (const plan of plans.docs) {
+      await Promise.all(plans.docs.map(async (plan) => {
         const pins = await getDocs(collection(db, 'projects', projectId, 'plans', plan.id, 'pins'));
         for (const p of pins.docs) {
           const a = p.data() as any;
@@ -119,8 +126,10 @@ export default function SearchScreen() {
             display: `${a.instruction ?? ''} · ${a.status ?? ''}${a.assigneeName ? ` · ${a.assigneeName}` : ''}`,
           });
         }
-      }
+      }));
     } catch { /* skip */ }
+    })(),
+    ]);
 
     items.sort((a, b) => b.ms - a.ms);
     setHistory(items);

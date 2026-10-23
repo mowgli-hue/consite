@@ -117,21 +117,22 @@ export async function computeStageChecks(project: Project, phases: Phase[]): Pro
       'Assign the crew: Users → tick this project on each worker.');
 
     // First-aid attendant: any crew member with a valid first-aid/OFA cert.
+    // All crews' certs are read IN PARALLEL — sequential reads made the
+    // dashboard portfolio and this screen crawl on real crew sizes.
     let hasFirstAid = false;
     try {
-      for (const m of members) {
-        const certs = await getDocs(collection(db, 'users', m.uid, 'certifications'));
-        if (certs.docs.some((c) => {
-          const t = `${c.data().type ?? ''} ${c.data().displayName ?? ''}`.toLowerCase();
-          const exp = c.data().expiresAt;
-          const valid = typeof exp !== 'number' || exp > Date.now();
-          // Self-added certs count only once the office verifies them
-          // (verified === false is blocked; legacy certs without the
-          // field are grandfathered).
-          const verified = c.data().verified !== false;
-          return valid && verified && (t.includes('first') || t.includes('ofa') || t.includes('aid'));
-        })) { hasFirstAid = true; break; }
-      }
+      const certsPerMember = await Promise.all(members.map((m) =>
+        getDocs(collection(db, 'users', m.uid, 'certifications')).catch(() => null)));
+      hasFirstAid = certsPerMember.some((certs) => certs?.docs.some((c) => {
+        const t = `${c.data().type ?? ''} ${c.data().displayName ?? ''}`.toLowerCase();
+        const exp = c.data().expiresAt;
+        const valid = typeof exp !== 'number' || exp > Date.now();
+        // Self-added certs count only once the office verifies them
+        // (verified === false is blocked; legacy certs without the
+        // field are grandfathered).
+        const verified = c.data().verified !== false;
+        return valid && verified && (t.includes('first') || t.includes('ofa') || t.includes('aid'));
+      }));
     } catch { /* certs unreadable → check stays red with instruction */ }
     add('first-aid', 'First-aid attendant on crew', hasFirstAid,
       'WorkSafeBC: a crew this size needs a valid OFA ticket on site. Add the cert under the worker’s My Tickets, or assign a certified worker.');

@@ -285,6 +285,13 @@ service cloud.firestore {
     // User certifications — workers manage their own; admins read all.
     // ─────────────────────────────────────────────────────
 
+    // Collection-group reads (Compliance screen + Safety Center cert
+    // tiles query ALL certifications at once) need their own wildcard
+    // match — the /users/{uid}/... rule below does not authorize them.
+    match /{path=**}/certifications/{certId} {
+      allow read: if isStaff();
+    }
+
     match /users/{uid}/certifications/{certId} {
       allow read: if isMe(uid) || isStaff();
       // Workers attach evidence; ADMINS confer validity. A self-added cert

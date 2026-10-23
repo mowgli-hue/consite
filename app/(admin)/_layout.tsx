@@ -3,20 +3,25 @@ import { Stack, Redirect } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { SideNav, type NavItem } from '../../src/components/SideNav';
 
+// Routes are GROUP-QUALIFIED: /projects, /crew and /dashboard also exist
+// in the (worker) group, and the bare path can resolve to the worker
+// screen — whose layout bounces admins back to the dashboard. That made
+// the Projects sidebar item "open the Dashboard". `match` keeps the
+// active-highlight working on the group-less pathname.
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', icon: 'grid', route: '/dashboard' },
-  { label: 'Search', icon: 'search', route: '/search' },
-  { label: 'Inbox', icon: 'bell', route: '/inbox' },
-  { label: 'Site Timeline', icon: 'image', route: '/timeline' },
-  { label: 'Money', icon: 'dollar-sign', route: '/money' },
-  { label: 'Hours & Reports', icon: 'bar-chart-2', route: '/reports' },
-  { label: 'Crew Board', icon: 'columns', route: '/crew' },
-  { label: 'Users', icon: 'users', route: '/users' },
-  { label: 'Clients', icon: 'phone', route: '/clients' },
-  { label: 'Projects', icon: 'briefcase', route: '/projects' },
-  { label: 'Forms & Documents', icon: 'folder', route: '/library' },
-  { label: 'Safety Center', icon: 'shield', route: '/safety' },
-  { label: 'Compliance', icon: 'award', route: '/compliance' },
+  { label: 'Dashboard', icon: 'grid', route: '/(admin)/dashboard', match: '/dashboard' },
+  { label: 'Search', icon: 'search', route: '/(admin)/search', match: '/search' },
+  { label: 'Inbox', icon: 'bell', route: '/(admin)/inbox', match: '/inbox' },
+  { label: 'Site Timeline', icon: 'image', route: '/(admin)/timeline', match: '/timeline' },
+  { label: 'Money', icon: 'dollar-sign', route: '/(admin)/money', match: '/money' },
+  { label: 'Hours & Reports', icon: 'bar-chart-2', route: '/(admin)/reports', match: '/reports' },
+  { label: 'Crew Board', icon: 'columns', route: '/(admin)/crew', match: '/crew' },
+  { label: 'Users', icon: 'users', route: '/(admin)/users', match: '/users' },
+  { label: 'Clients', icon: 'phone', route: '/(admin)/clients', match: '/clients' },
+  { label: 'Projects', icon: 'briefcase', route: '/(admin)/projects', match: '/projects' },
+  { label: 'Forms & Documents', icon: 'folder', route: '/(admin)/library', match: '/library' },
+  { label: 'Safety Center', icon: 'shield', route: '/(admin)/safety', match: '/safety' },
+  { label: 'Compliance', icon: 'award', route: '/(admin)/compliance', match: '/compliance' },
 ];
 
 export default function AdminLayout() {
