@@ -31,7 +31,7 @@ const MANAGE_MODULES: Module[] = [
   { id: 'crew', label: 'Crew Board', icon: 'columns', subtitle: 'Who’s on which site', route: '/(admin)/crew' },
   { id: 'users', label: 'Users', icon: 'users', subtitle: 'Workers & accounts', route: '/(admin)/users' },
   { id: 'clients', label: 'Clients', icon: 'phone', subtitle: 'CRM & comm records', route: '/(admin)/clients' },
-  { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Sites & geofences', route: '/(admin)/projects' },
+  { id: 'projects', label: 'Projects', icon: 'briefcase', subtitle: 'Sites & geofences', route: '/(admin)/sites' },
   { id: 'library', label: 'Forms & Documents', icon: 'folder', subtitle: 'Company forms & safety docs', route: '/(admin)/library' },
   { id: 'safety', label: 'Safety Center', icon: 'shield', subtitle: 'FLHA rates & deficiencies', route: '/(admin)/safety' },
   { id: 'compliance', label: 'Compliance', icon: 'award', subtitle: 'Cert expiries', route: '/(admin)/compliance' },
@@ -113,7 +113,7 @@ export default function AdminDashboard() {
             <Text style={[styles.statNumber, unread > 0 && { color: colors.danger }]}>{unread}</Text>
             <Text style={styles.statLabel}>Unread alerts</Text>
           </Pressable>
-          <Pressable style={styles.stat} onPress={() => router.push('/(admin)/projects' as any)}>
+          <Pressable style={styles.stat} onPress={() => router.push('/(admin)/sites' as any)}>
             <Text style={styles.statNumber}>{activeProjects ?? '–'}</Text>
             <Text style={styles.statLabel}>Active sites</Text>
           </Pressable>

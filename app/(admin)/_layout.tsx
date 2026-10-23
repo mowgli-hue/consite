@@ -18,7 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Crew Board', icon: 'columns', route: '/(admin)/crew', match: '/crew' },
   { label: 'Users', icon: 'users', route: '/(admin)/users', match: '/users' },
   { label: 'Clients', icon: 'phone', route: '/(admin)/clients', match: '/clients' },
-  { label: 'Projects', icon: 'briefcase', route: '/(admin)/projects', match: '/projects' },
+  { label: 'Projects', icon: 'briefcase', route: '/(admin)/sites', match: '/sites' },
   { label: 'Forms & Documents', icon: 'folder', route: '/(admin)/library', match: '/library' },
   { label: 'Safety Center', icon: 'shield', route: '/(admin)/safety', match: '/safety' },
   { label: 'Compliance', icon: 'award', route: '/(admin)/compliance', match: '/compliance' },
