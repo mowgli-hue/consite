@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { notify } from '../../src/lib/notify';
 import { colors, spacing, radii, typography } from '../../src/theme';
 
 export default function LoginScreen() {
@@ -23,7 +24,7 @@ export default function LoginScreen() {
 
   async function handleSubmit() {
     if (!email || !password) {
-      Alert.alert('Missing details', 'Enter your email and password.');
+      notify('Missing details', 'Enter your email and password.');
       return;
     }
     try {
@@ -31,7 +32,11 @@ export default function LoginScreen() {
       await signIn(email, password);
       router.replace('/');
     } catch (err: any) {
-      Alert.alert('Sign in failed', err.message ?? 'Please try again.');
+      // notify, not Alert.alert — Alert is a NO-OP on web, so a wrong
+      // password failed in total silence (crew-test bug #7).
+      notify('Sign in failed', String(err.message ?? '').includes('auth/')
+        ? 'Wrong email or password — check both and try again.'
+        : err.message ?? 'Please try again.');
     } finally {
       setSubmitting(false);
     }

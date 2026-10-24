@@ -96,7 +96,14 @@ export default function WorkerDashboard() {
     );
     return onSnapshot(
       q,
-      (snap) => setNotices(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))),
+      (snap) => {
+        // Dedupe by title — re-assigning someone fires the trigger again
+        // and the same "New site" banner showed twice (crew-test bug #6).
+        const seen = new Set<string>();
+        setNotices(snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .filter((n) => (seen.has(n.title) ? false : (seen.add(n.title), true))));
+      },
       () => setNotices([]),
     );
   }, [user]);

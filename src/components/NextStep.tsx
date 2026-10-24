@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { collection, doc, getDoc, getDocs, limit, query, Timestamp, where } from 'firebase/firestore';
 
 import { db } from '../lib/firebase';
@@ -79,6 +79,9 @@ export function NextStep() {
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
+  // Recompute every time Home regains focus — after clocking in, the hero
+  // used to keep showing "Start work" from its first mount (stale state).
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   if (state.kind === 'loading') {
     return (

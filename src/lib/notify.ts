@@ -8,6 +8,27 @@
 
 import { Alert, Platform } from 'react-native';
 
+/**
+ * Non-blocking in-app toast (crew-test fix: native alert() freezes the
+ * page on web, reads as an error, and said "offline — will sync" over a
+ * working connection). Success feedback should never need an OK button.
+ * ToastHost (components/ToastHost.tsx) renders these; toast() falls back
+ * to notify() if no host is mounted.
+ */
+type ToastMsg = { title: string; body?: string; tone: 'success' | 'info' };
+type ToastListener = (t: ToastMsg) => void;
+let toastListener: ToastListener | null = null;
+
+export function registerToastHost(fn: ToastListener): () => void {
+  toastListener = fn;
+  return () => { if (toastListener === fn) toastListener = null; };
+}
+
+export function toast(title: string, body?: string, tone: 'success' | 'info' = 'success') {
+  if (toastListener) toastListener({ title, body, tone });
+  else notify(title, body);
+}
+
 export function notify(title: string, message?: string) {
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-alert

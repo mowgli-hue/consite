@@ -138,17 +138,6 @@ export async function clockIn(opts: {
     const check = checkGeofence({ lat: pos.coords.latitude, lng: pos.coords.longitude }, project.geofence, pos.coords.accuracy ?? 0);
     gps = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? 0, distanceFromProjectM: check.distanceM };
     if (!check.inside) throw asError({ ok: false, reason: 'outside_geofence', distanceM: check.distanceM, message: `You are ${check.distanceM}m from the site. Move within ${project.geofence.radiusM}m to clock in.` });
-  } else {
-    // Geofence off (or override): still CAPTURE the location best-effort —
-    // unenforced is fine, unrecorded is not. A 40km outlier should at
-    // least be visible in an audit. Never blocks the clock-in.
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const pos = await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }), 6_000);
-        gps = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? 0, distanceFromProjectM: -1 };
-      }
-    } catch { /* no location — record proceeds without */ }
   }
 
   const data = {
@@ -163,6 +152,24 @@ export async function clockIn(opts: {
   } else {
     id = (await addDoc(collection(db, 'projects', project.id, 'attendance'), data)).id;
   }
+
+  if (!gps) {
+    // Geofence off (or override): still CAPTURE location, best-effort and
+    // IN THE BACKGROUND. Awaiting the browser's permission prompt here
+    // used to stall the write past its 10s timeout — crew saw a long
+    // spinner and a bogus "offline — will sync" while fully online.
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const pos = await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }), 15_000);
+        await updateDoc(doc(db, 'projects', project.id, 'attendance', id), {
+          clockInGps: { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? 0, distanceFromProjectM: -1 },
+        });
+      } catch { /* no location — the shift stands without it */ }
+    })();
+  }
+
   return { id, gps, validation: { ok: true, distanceM: gps?.distanceFromProjectM } };
 }
 

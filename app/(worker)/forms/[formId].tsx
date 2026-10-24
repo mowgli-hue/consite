@@ -22,6 +22,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Platform,
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,8 +40,24 @@ import { FormRenderer } from '../../../src/components/FormRenderer';
 import { AIFilledBanner } from '../../../src/components/AIFilledBanner';
 import { VoiceInput } from '../../../src/components/VoiceInput';
 import { exportSubmissionToPdf, shareSubmissionPdf } from '../../../src/lib/pdf';
+import { toast } from '../../../src/lib/notify';
 import { colors, spacing, radii, typography } from '../../../src/theme';
 import type { FormSchema, FormValues } from '../../../src/types';
+
+/**
+ * Date fields are ALWAYS today — the AI prefilled 3/7/2026 on a form
+ * signed on Oct 23 (crew-test bug #3). A hazard assessment is a
+ * contemporaneous record; the model never gets to pick its date.
+ */
+function withTodayDates(schema: FormSchema, values: FormValues): FormValues {
+  const out = { ...values };
+  for (const section of schema.sections ?? []) {
+    for (const field of (section as { fields?: Array<{ id: string; type: string }> }).fields ?? []) {
+      if (field.type === 'date') out[field.id] = Date.now();
+    }
+  }
+  return out;
+}
 
 type Phase = 'loading' | 'filling' | 'voice-prompt' | 'voice-filling' | 'review' | 'submitting' | 'done';
 
@@ -88,7 +105,7 @@ export default function FormFillScreen() {
         setPhaseMessage('AI is reading the site context…');
         try {
           const result = await fillFormWithAi({ schema: loaded, projectId });
-          setValues(result.values);
+          setValues(withTodayDates(loaded, result.values));
           setAiFilledKeys(new Set(Object.keys(result.values ?? {})));
           setAiNotes(result.notes);
           setAiConfidence(result.confidence);
@@ -119,7 +136,8 @@ export default function FormFillScreen() {
           voiceTranscript: transcript,
         });
         // Merge: voice-driven results override pre-fill where present
-        setValues((prev) => ({ ...prev, ...result.values }));
+        // (except dates, which stay pinned to today).
+        setValues((prev) => withTodayDates(schema, { ...prev, ...result.values }));
         setAiFilledKeys((prev) => {
           const next = new Set(prev);
           Object.keys(result.values ?? {}).forEach((k) => next.add(k));
@@ -225,7 +243,7 @@ export default function FormFillScreen() {
           });
         }
         setPhase('done');
-        Alert.alert('End of day recorded', 'Have a good one.');
+        toast('Day finished ✓', 'Your hours were sent to the foreman for approval. Have a good one.');
         router.back();
         return;
       }
@@ -262,19 +280,25 @@ export default function FormFillScreen() {
         throw err;
       }
 
-      try {
-        const uri = await exportSubmissionToPdf(schema, {
-          ...submission,
-          id: ref.id,
-          submittedAt: Date.now(),
-        } as any);
-        await shareSubmissionPdf(uri);
-      } catch (pdfErr) {
-        console.warn('PDF export failed (non-fatal)', pdfErr);
+      // No auto-share on web: shareSubmissionPdf popped Chrome's PRINT
+      // dialog on every submit (crew-test bug #1) and made people think
+      // the save failed. The server renders + emails the official PDF;
+      // local share stays for native where it's an actual share sheet.
+      if (Platform.OS !== 'web') {
+        try {
+          const uri = await exportSubmissionToPdf(schema, {
+            ...submission,
+            id: ref.id,
+            submittedAt: Date.now(),
+          } as any);
+          await shareSubmissionPdf(uri);
+        } catch (pdfErr) {
+          console.warn('PDF export failed (non-fatal)', pdfErr);
+        }
       }
 
       setPhase('done');
-      Alert.alert('Submitted', 'Your form has been recorded.');
+      toast('Saved ✓', `${schema.title} recorded — the office gets the signed PDF automatically.`);
       router.back();
     } catch (err: any) {
       Alert.alert('Submission failed', err.message ?? 'Please try again.');

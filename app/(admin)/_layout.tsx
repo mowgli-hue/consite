@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { Stack, Redirect } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { SideNav, type NavItem } from '../../src/components/SideNav';
+import { ToastHost } from '../../src/components/ToastHost';
 import { BottomBar } from '../../src/components/BottomBar';
 
 // Routes are GROUP-QUALIFIED: /projects, /crew and /dashboard also exist
@@ -48,6 +49,7 @@ export default function AdminLayout() {
         </View>
       </View>
       <BottomBar primary={BOTTOM_PRIMARY} more={BOTTOM_MORE} />
+      <ToastHost />
     </View>
   );
 }

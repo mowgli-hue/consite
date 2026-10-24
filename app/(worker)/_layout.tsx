@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useT } from '../../src/contexts/I18nContext';
 import { SideNav, type NavItem } from '../../src/components/SideNav';
+import { ToastHost } from '../../src/components/ToastHost';
 import { colors } from '../../src/theme';
 
 const NAV_ITEMS: NavItem[] = [
@@ -85,6 +86,7 @@ export default function WorkerLayout() {
           <Tabs.Screen name="scan" options={{ href: null }} />
         </Tabs>
       </View>
+      <ToastHost />
     </View>
   );
 }

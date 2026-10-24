@@ -210,6 +210,11 @@ service cloud.firestore {
                           request.resource.data.clockOutAt is timestamp &&
                           request.resource.data.clockOutAt.toMillis() <= request.time.toMillis() + 5 * 60 * 1000 &&
                           request.resource.data.clockOutAt.toMillis() >= request.time.toMillis() - 36 * 60 * 60 * 1000) ||
+                         (resource.data.uid == request.auth.uid &&
+                          resource.data.clockOutAt == null &&
+                          resource.data.clockInGps == null &&
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['clockInGps'])) ||
                          (hasProjectPerm(pid, 'supervisor.attendance.clockout-others') &&
                           request.resource.data.diff(resource.data).affectedKeys()
                             .hasOnly(['clockOutAt', 'clockOutBy', 'status']) &&

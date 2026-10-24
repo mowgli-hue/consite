@@ -36,6 +36,7 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadString } from 'firebase/storage';
 
 import { db, storage } from '../../src/lib/firebase';
+import { toast } from '../../src/lib/notify';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { analyzeDeficiency } from '../../src/lib/ai';
 import { VoiceInput } from '../../src/components/VoiceInput';
@@ -175,6 +176,7 @@ export default function DeficiencyScreen() {
         aiAssisted: true,
       });
       setPhase('done');
+      toast('Issue filed ✓', 'Added to the punch list — the office was alerted with your photo.');
       setTimeout(() => router.back(), 1200);
     } catch (err: any) {
       Alert.alert('Submit failed', err.message ?? 'Try again.');

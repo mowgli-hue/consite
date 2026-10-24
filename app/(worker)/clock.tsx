@@ -18,8 +18,8 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { router } from 'expo-router';
-import { notify } from '../../src/lib/notify';
+import { router, useFocusEffect } from 'expo-router';
+import { notify, toast } from '../../src/lib/notify';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -126,6 +126,10 @@ export default function ClockScreen() {
     load();
   }, [load]);
 
+  // Reload on every FOCUS, not just first mount — returning from the FLHA
+  // used to show a stale "FLHA not done today" strip (crew-test bug).
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
   async function handleClockIn() {
     if (!user || !selectedId) return;
     const project = projects.find((p) => p.id === selectedId);
@@ -138,11 +142,11 @@ export default function ClockScreen() {
         allProjectIds: user.projectIds,
       });
       // The FLHA is a GATE, not a suggestion — clock-in flows straight
-      // into today's hazard assessment. (It used to be a dismissible
-      // popup; crews that tapped Cancel worked all day with no FLHA.)
-      notify(
+      // into today's hazard assessment. Toast, not alert: nothing to OK,
+      // and "offline" wording only when it actually went offline.
+      toast(
         result.offline ? t('Clocked in ✓ (offline — will sync)') : t('Clocked in ✓'),
-        t('Now do your FLHA — it takes a minute.'),
+        `${project.name} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — ${t('Now do your FLHA — it takes a minute.')}`,
       );
       router.push(`/forms/${project.defaultFlhaFormId ?? 'flha-daily-v1'}?projectId=${project.id}` as any);
       await load();
@@ -173,7 +177,7 @@ export default function ClockScreen() {
       // End-of-Day questions live at clock-out — also a gate, not a popup.
       const proj = projects.find((p) => p.id === pid);
       const flhaId = proj?.defaultFlhaFormId ?? 'flha-daily-v1';
-      notify(
+      toast(
         localShift ? t('Clocked out ✓ (offline — will sync)') : t('Clocked out ✓'),
         t('Last step: quick end-of-day check — 30 seconds.'),
       );
