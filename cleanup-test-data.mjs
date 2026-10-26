@@ -22,7 +22,13 @@ const db = admin.firestore();
 const bucket = admin.storage().bucket('consite-prod.appspot.com');
 
 const APPLY = process.argv.includes('--yes');
-const QA_EMAILS = ['admin@junglelabsworld.com', 'test@gmail.com'];
+// Accounts to DELETE outright (owner's call): both "Navdeep Singh Sandhu"
+// test identities — Auth login, user doc, memberships, and every record
+// they created (incl. the Jul 8 demo FLHAs).
+const DELETE_EMAILS = ['lavishadhingra06@gmail.com', 'admin@junglelabsworld.com'];
+// Accounts to only DEACTIVATE (kept for possible future QA, signed out everywhere).
+const DEACTIVATE_EMAILS = ['test@gmail.com'];
+const QA_EMAILS = [...DELETE_EMAILS, ...DEACTIVATE_EMAILS]; // records purge list
 const MARKERS = ['TEST – Atlas QA', 'TEST - Atlas QA', 'Atlas QA'];
 
 const hasMarker = (v) => {
@@ -49,17 +55,45 @@ async function main() {
 
   // ── QA accounts ────────────────────────────────────
   const qaUids = [];
+  const deleteUids = [];
+  const deactivateUids = [];
   const users = await db.collection('users').get();
   console.log(`\nUsers (${users.size} total):`);
   for (const u of users.docs) {
     const d = u.data();
-    const isQa = QA_EMAILS.includes(String(d.email ?? '').toLowerCase());
-    if (isQa) qaUids.push(u.id);
-    console.log(`  ${isQa ? '→ QA ACCOUNT' : '  keep      '}: ${d.displayName} <${d.email}> role=${d.role} active=${d.active}`);
+    const email = String(d.email ?? '').toLowerCase();
+    const tag = DELETE_EMAILS.includes(email) ? '→ DELETE    '
+      : DEACTIVATE_EMAILS.includes(email) ? '→ deactivate'
+      : '  keep      ';
+    if (DELETE_EMAILS.includes(email)) { deleteUids.push(u.id); qaUids.push(u.id); }
+    else if (DEACTIVATE_EMAILS.includes(email)) { deactivateUids.push(u.id); qaUids.push(u.id); }
+    console.log(`  ${tag}: ${d.displayName} <${d.email}> role=${d.role} active=${d.active}`);
   }
-  for (const uid of qaUids) {
+
+  for (const uid of deactivateUids) {
     console.log(`  ${APPLY ? 'DEACTIVATE' : 'would deactivate'}: ${uid}`);
     if (APPLY) await db.collection('users').doc(uid).update({ active: false });
+  }
+
+  // Full account deletion: Auth user, user doc + subcollections, and
+  // membership on every project.
+  for (const uid of deleteUids) {
+    console.log(`  ${APPLY ? 'DELETE ACCOUNT' : 'would delete account'}: ${uid}`);
+    if (!APPLY) continue;
+    await admin.auth().deleteUser(uid).catch((e) => console.log(`    (auth user: ${e.message})`));
+    for (const sub of ['certifications', 'notifications']) {
+      const docs = await db.collection('users').doc(uid).collection(sub).get();
+      for (const d of docs.docs) await d.ref.delete();
+    }
+    await db.collection('users').doc(uid).delete();
+    const allProjects = await db.collection('projects').get();
+    for (const proj of allProjects.docs) {
+      await proj.ref.collection('members').doc(uid).delete().catch(() => {});
+      await proj.ref.update({
+        memberUids: admin.firestore.FieldValue.arrayRemove(uid),
+        supervisorUids: admin.firestore.FieldValue.arrayRemove(uid),
+      }).catch(() => {});
+    }
   }
 
   // ── Per-project records ───────────────────────────
