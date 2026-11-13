@@ -17,6 +17,7 @@ import { db, storage } from '../../src/lib/firebase';
 import { notify, confirm, toast } from '../../src/lib/notify';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { listAllProjects } from '../../src/lib/adminUsers';
+import { Dropdown } from '../../src/components/Dropdown';
 import { tsToMs } from '../../src/lib/attendance';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { Project } from '../../src/types';
@@ -25,11 +26,12 @@ type Entry = {
   id: string; summary: string; trade: string; location: string;
   quantities: string; flags: string; displayName: string;
   ms: number; photoUrl?: string;
+  projectId: string; projectName: string;
 };
 
 export default function SiteTimeline() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string>('all');
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   // Filter the feed to one person — "what did Harjeet post on this job?"
@@ -38,10 +40,9 @@ export default function SiteTimeline() {
   const isAdmin = me?.role === 'admin';
 
   function removeEntry(e: Entry) {
-    if (!projectId) return;
     confirm('Delete this update?', `${e.displayName}: ${e.summary.slice(0, 80)}`, async () => {
       try {
-        await deleteDoc(doc(db, 'projects', projectId, 'workLog', e.id));
+        await deleteDoc(doc(db, 'projects', e.projectId, 'workLog', e.id));
         setEntries((list) => (list ?? []).filter((x) => x.id !== e.id));
         toast('Update deleted');
       } catch (err: any) { notify('Delete failed', err.message); }
@@ -53,50 +54,56 @@ export default function SiteTimeline() {
       try {
         const p = await listAllProjects();
         setProjects(p);
-        if (p.length > 0) setProjectId(p[0].id);
       } catch (err: any) { notify('Could not load projects', err.message); }
     })();
   }, []);
 
   const load = useCallback(async () => {
-    if (!projectId) return;
+    if (projects.length === 0) { setEntries([]); return; }
     setEntries(null);
-    setWorker('all');
     try {
-      const snap = await getDocs(query(
-        collection(db, 'projects', projectId, 'workLog'),
-        orderBy('createdAt', 'desc'),
-        limit(50),
-      ));
-      const list: Entry[] = await Promise.all(snap.docs.map(async (d) => {
-        const a = d.data() as any;
-        let photoUrl: string | undefined;
-        if (a.photoPath) {
-          try { photoUrl = await getDownloadURL(ref(storage, a.photoPath)); } catch { /* photo unavailable */ }
-        }
-        return {
-          id: d.id,
-          summary: a.summary ?? '',
-          trade: a.trade ?? '',
-          location: a.location ?? '',
-          quantities: a.quantities ?? '',
-          flags: a.flags ?? '',
-          displayName: a.displayName ?? 'Worker',
-          ms: tsToMs(a.createdAt) ?? 0,
-          photoUrl,
-        };
+      const targets = projectId === 'all' ? projects : projects.filter((p) => p.id === projectId);
+      const per = await Promise.all(targets.map(async (p) => {
+        try {
+          const snap = await getDocs(query(
+            collection(db, 'projects', p.id, 'workLog'),
+            orderBy('createdAt', 'desc'),
+            limit(projectId === 'all' ? 25 : 60),
+          ));
+          return await Promise.all(snap.docs.map(async (d): Promise<Entry> => {
+            const a = d.data() as any;
+            let photoUrl: string | undefined;
+            if (a.photoPath) {
+              try { photoUrl = await getDownloadURL(ref(storage, a.photoPath)); } catch { /* photo unavailable */ }
+            }
+            return {
+              id: d.id,
+              summary: a.summary ?? '',
+              trade: a.trade ?? '',
+              location: a.location ?? '',
+              quantities: a.quantities ?? '',
+              flags: a.flags ?? '',
+              displayName: a.displayName ?? 'Worker',
+              ms: tsToMs(a.createdAt) ?? 0,
+              photoUrl,
+              projectId: p.id, projectName: p.name,
+            };
+          }));
+        } catch { return [] as Entry[]; /* one unreadable project must not blank the feed */ }
       }));
-      setEntries(list);
+      setEntries(per.flat().sort((x, y) => y.ms - x.ms));
     } catch (err: any) {
       notify('Timeline failed', err.message);
       setEntries([]);
     }
-  }, [projectId]);
+  }, [projectId, projects]);
 
   useEffect(() => { load(); }, [load]);
 
   const workerNames = [...new Set((entries ?? []).map((e) => e.displayName))].sort();
-  const shown = (entries ?? []).filter((e) => worker === 'all' || e.displayName === worker);
+  // If the chosen employee has nothing in this project, fall back to everyone.
+  const workerOn = worker !== 'all' && workerNames.includes(worker) ? worker : 'all';
+  const shown = (entries ?? []).filter((e) => workerOn === 'all' || e.displayName === workerOn);
 
   // Group by day
   const groups = new Map<string, Entry[]>();
@@ -120,25 +127,20 @@ export default function SiteTimeline() {
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}
       >
-        <View style={styles.chips}>
-          {projects.map((p) => (
-            <Pressable key={p.id} style={[styles.chip, projectId === p.id && styles.chipOn]} onPress={() => setProjectId(p.id)}>
-              <Text style={[styles.chipText, projectId === p.id && styles.chipTextOn]}>{p.name}</Text>
-            </Pressable>
-          ))}
+        <View style={styles.pickers}>
+          <Dropdown
+            label="Project" icon="briefcase" value={projectId} onChange={setProjectId}
+            options={[{ value: 'all', label: 'All projects' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
+          />
+          <Dropdown
+            label="Employee" icon="user" value={workerOn} onChange={setWorker}
+            options={[{ value: 'all', label: 'All employees' }, ...workerNames.map((n) => ({
+              value: n, label: n, hint: String((entries ?? []).filter((e) => e.displayName === n).length),
+            }))]}
+          />
         </View>
-
-        {workerNames.length > 1 && (
-          <View style={[styles.chips, { marginTop: spacing.sm }]}>
-            <Pressable style={[styles.chip, worker === 'all' && styles.chipOn]} onPress={() => setWorker('all')}>
-              <Text style={[styles.chipText, worker === 'all' && styles.chipTextOn]}>All workers</Text>
-            </Pressable>
-            {workerNames.map((n) => (
-              <Pressable key={n} style={[styles.chip, worker === n && styles.chipOn]} onPress={() => setWorker(n)}>
-                <Text style={[styles.chipText, worker === n && styles.chipTextOn]}>{n}</Text>
-              </Pressable>
-            ))}
-          </View>
+        {entries !== null && entries.length > 0 && (
+          <Text style={styles.count}>{shown.length} update{shown.length === 1 ? '' : 's'}</Text>
         )}
 
         {entries === null ? (
@@ -159,7 +161,7 @@ export default function SiteTimeline() {
                   <View style={styles.cardBody}>
                     <Text style={styles.summary}>{e.summary}</Text>
                     <Text style={styles.meta}>
-                      {e.displayName} · {e.trade}
+                      {e.displayName}{projectId === 'all' ? ` · ${e.projectName}` : ''} · {e.trade}
                       {e.location && e.location !== 'unspecified' ? ` · ${e.location}` : ''}
                       {' · '}{new Date(e.ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
@@ -190,6 +192,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold, color: colors.text },
   scroll: { padding: spacing.lg, paddingBottom: spacing['3xl'], maxWidth: 760, width: '100%', alignSelf: 'center' },
 
+  pickers: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.sm },
+  count: { color: colors.textSecondary, fontSize: typography.sizes.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
   chip: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.lg,

@@ -27,6 +27,7 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { approveShift, paidHours, tsToMs } from '../../src/lib/attendance';
 import { notify, confirm, toast } from '../../src/lib/notify';
 import { listUsers, listAllProjects } from '../../src/lib/adminUsers';
+import { Dropdown } from '../../src/components/Dropdown';
 import { colors, spacing, radii, typography, shadows, touch } from '../../src/theme';
 import type { Project, User } from '../../src/types';
 
@@ -66,7 +67,6 @@ export default function AdminReports() {
   const [users, setUsers] = useState<User[]>([]);
   const [projectSel, setProjectSel] = useState<string>('all');
   const [workerSel, setWorkerSel] = useState<string>('all');
-  const [workerSearch, setWorkerSearch] = useState('');
   const [rangeDays, setRangeDays] = useState<number>(7);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,14 +169,11 @@ export default function AdminReports() {
     return [...m.values()].sort((a, b) => b.hours - a.hours);
   }, [visible]);
 
-  // Worker picker: people who can have hours, narrowed by the search box.
-  const pickable = useMemo(() => {
-    const q = workerSearch.trim().toLowerCase();
-    return users
-      .filter((u) => u.role === 'worker' || rows.some((r) => r.uid === u.uid))
-      .filter((u) => !q || (u.displayName ?? '').toLowerCase().includes(q))
-      .slice(0, 40);
-  }, [users, rows, workerSearch]);
+  // Worker picker: people who can have hours, A–Z.
+  const pickable = useMemo(() => users
+    .filter((u) => u.role === 'worker' || rows.some((r) => r.uid === u.uid))
+    .sort((x, y) => (x.displayName ?? '').localeCompare(y.displayName ?? '')),
+  [users, rows]);
 
   const workerLabel = workerSel === 'all' ? 'All workers' : (users.find((u) => u.uid === workerSel)?.displayName ?? 'Worker');
   const projectLabel = projectSel === 'all' ? 'All projects' : (projects.find((p) => p.id === projectSel)?.name ?? 'Project');
@@ -290,42 +287,19 @@ export default function AdminReports() {
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* ── The three pickers ── */}
-        <Text style={styles.sectionLabel}>Worker</Text>
-        <TextInput
-          style={styles.search}
-          value={workerSearch} onChangeText={setWorkerSearch}
-          placeholder="Type a name to find someone…" placeholderTextColor={colors.textTertiary}
-        />
-        <View style={styles.chips}>
-          <Pressable style={[styles.chip, workerSel === 'all' && styles.chipOn]} onPress={() => setWorkerSel('all')}>
-            <Text style={[styles.chipText, workerSel === 'all' && styles.chipTextOn]}>All workers</Text>
-          </Pressable>
-          {pickable.map((u) => (
-            <Pressable key={u.uid} style={[styles.chip, workerSel === u.uid && styles.chipOn]} onPress={() => setWorkerSel(u.uid)}>
-              <Text style={[styles.chipText, workerSel === u.uid && styles.chipTextOn]}>{u.displayName}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <Text style={styles.sectionLabel}>Project</Text>
-        <View style={styles.chips}>
-          <Pressable style={[styles.chip, projectSel === 'all' && styles.chipOn]} onPress={() => setProjectSel('all')}>
-            <Text style={[styles.chipText, projectSel === 'all' && styles.chipTextOn]}>All projects</Text>
-          </Pressable>
-          {projects.map((p) => (
-            <Pressable key={p.id} style={[styles.chip, projectSel === p.id && styles.chipOn]} onPress={() => setProjectSel(p.id)}>
-              <Text style={[styles.chipText, projectSel === p.id && styles.chipTextOn]}>{p.name}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <Text style={styles.sectionLabel}>When</Text>
-        <View style={styles.chips}>
-          {RANGES.map((r) => (
-            <Pressable key={r.id} style={[styles.chip, rangeDays === r.days && styles.chipOn]} onPress={() => setRangeDays(r.days)}>
-              <Text style={[styles.chipText, rangeDays === r.days && styles.chipTextOn]}>{r.label}</Text>
-            </Pressable>
-          ))}
+        <View style={styles.pickers}>
+          <Dropdown
+            label="Worker" icon="user" value={workerSel} onChange={setWorkerSel}
+            options={[{ value: 'all', label: 'All workers' }, ...pickable.map((u) => ({ value: u.uid, label: u.displayName ?? 'Worker' }))]}
+          />
+          <Dropdown
+            label="Project" icon="briefcase" value={projectSel} onChange={setProjectSel}
+            options={[{ value: 'all', label: 'All projects' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
+          />
+          <Dropdown
+            label="When" icon="calendar" value={String(rangeDays)} onChange={(v) => setRangeDays(Number(v))}
+            options={RANGES.map((r) => ({ value: String(r.days), label: r.label }))}
+          />
         </View>
 
         {loading ? (
@@ -342,31 +316,42 @@ export default function AdminReports() {
               </Text>
             </View>
 
-            {workerSel === 'all' && byWorker.length > 0 && (
+            {/* Where the hours went — filled bars, tap to drill in. */}
+            {projectSel === 'all' && byProject.length > 0 && (
               <>
-                <Text style={styles.sectionLabel}>By worker — tap a name to see just them</Text>
-                {byWorker.map((t) => (
-                  <Pressable key={t.uid} style={styles.totalRow} onPress={() => setWorkerSel(t.uid)}>
-                    <Text style={styles.totalName}>{t.name}</Text>
-                    <Text style={styles.totalHours}>
-                      {t.hours.toFixed(1)}h · {t.shifts} shift{t.shifts === 1 ? '' : 's'}
-                      {t.open > 0 && <Text style={styles.flag}>  ⚠ {t.open} open</Text>}
-                    </Text>
-                  </Pressable>
+                <Text style={styles.sectionLabel}>
+                  {workerSel === 'all' ? 'Hours by project' : `Where ${workerLabel} worked`}
+                </Text>
+                {byProject.map((t) => (
+                  <ShareBar
+                    key={t.id} name={t.name} hours={t.hours} total={summary.total}
+                    sub={`${t.shifts} shift${t.shifts === 1 ? '' : 's'}`}
+                    onPress={() => setProjectSel(t.id)}
+                  />
                 ))}
               </>
             )}
 
-            {projectSel === 'all' && byProject.length > 0 && (
+            {workerSel === 'all' && byWorker.length > 0 && (
               <>
-                <Text style={styles.sectionLabel}>By project</Text>
-                {byProject.map((t) => (
-                  <Pressable key={t.id} style={styles.totalRow} onPress={() => setProjectSel(t.id)}>
-                    <Text style={styles.totalName}>{t.name}</Text>
-                    <Text style={styles.totalHours}>{t.hours.toFixed(1)}h · {t.shifts} shift{t.shifts === 1 ? '' : 's'}</Text>
-                  </Pressable>
+                <Text style={styles.sectionLabel}>
+                  {projectSel === 'all' ? 'Hours by worker' : `Who worked on ${projectLabel}`}
+                </Text>
+                {byWorker.map((t) => (
+                  <ShareBar
+                    key={t.uid} name={t.name} hours={t.hours} total={summary.total}
+                    sub={`${t.shifts} shift${t.shifts === 1 ? '' : 's'}${t.open > 0 ? ` · ⚠ ${t.open} open` : ''}`}
+                    onPress={() => setWorkerSel(t.uid)}
+                  />
                 ))}
               </>
+            )}
+
+            {(workerSel !== 'all' || projectSel !== 'all') && (
+              <Pressable style={styles.clearBtn} onPress={() => { setWorkerSel('all'); setProjectSel('all'); }}>
+                <Feather name="x" size={14} color={colors.primary} />
+                <Text style={styles.clearText}>Show everyone, all projects</Text>
+              </Pressable>
             )}
 
             {projectSel !== 'all' && (
@@ -473,7 +458,42 @@ export default function AdminReports() {
   );
 }
 
+/** One row of the breakdown: name, a bar filled to its share, hours and %. */
+function ShareBar({ name, hours, total, sub, onPress }: {
+  name: string; hours: number; total: number; sub: string; onPress: () => void;
+}) {
+  const pct = total > 0 ? Math.round((hours / total) * 100) : 0;
+  return (
+    <Pressable style={styles.barCard} onPress={onPress} accessibilityRole="button" accessibilityLabel={`${name}, ${hours.toFixed(1)} hours, ${pct} percent`}>
+      <View style={styles.barTop}>
+        <Text style={styles.barName} numberOfLines={1}>{name}</Text>
+        <Text style={styles.barHours}>{hours.toFixed(1)}h</Text>
+        <Text style={styles.barPct}>{pct}%</Text>
+      </View>
+      <View style={styles.barTrack}>
+        <View style={[styles.barFill, { width: `${Math.max(pct, hours > 0 ? 2 : 0)}%` }]} />
+      </View>
+      <Text style={styles.barSub}>{sub}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  pickers: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  barCard: {
+    backgroundColor: colors.surface, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border,
+    padding: spacing.md, marginBottom: spacing.sm,
+  },
+  barTop: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.md },
+  barName: { flex: 1, fontSize: typography.sizes.md, fontWeight: typography.weights.semibold, color: colors.text },
+  barHours: { fontSize: typography.sizes.md, fontWeight: typography.weights.bold, color: colors.text },
+  barPct: { width: 44, textAlign: 'right', fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.primary },
+  barTrack: { height: 12, borderRadius: 6, backgroundColor: colors.surfaceAlt, marginTop: spacing.sm, overflow: 'hidden' },
+  barFill: { height: 12, borderRadius: 6, backgroundColor: colors.primary },
+  barSub: { marginTop: spacing.xs, fontSize: typography.sizes.xs, color: colors.textSecondary },
+  clearBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start', paddingVertical: spacing.sm, marginTop: spacing.xs },
+  clearText: { color: colors.primary, fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
+
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
