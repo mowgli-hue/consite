@@ -15,11 +15,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { collection, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
+import { deleteObject, ref } from 'firebase/storage';
 
-import { db } from '../../src/lib/firebase';
+import { db, storage } from '../../src/lib/firebase';
+import { AddTicketModal, openTicketPhoto } from '../../src/components/AddTicketModal';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { notify } from '../../src/lib/notify';
+import { confirm, notify, toast } from '../../src/lib/notify';
 import { expiryStatus, type Certification } from '../../src/types/certification';
 import type { User } from '../../src/types';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
@@ -42,6 +44,7 @@ export default function WorkerDetail() {
   const [certs, setCerts] = useState<Certification[] | null>(null);
   const [assignments, setAssignments] = useState<ProjectAssignment[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
 
   const load = useCallback(async () => {
     if (!uid) return;
@@ -155,11 +158,17 @@ export default function WorkerDetail() {
           Certifications & tickets{certs ? ` (${certs.length})` : ''}
           {expired > 0 ? `  ·  ${expired} EXPIRED` : ''}
         </Text>
+        {me?.role === 'admin' && (
+          <Pressable style={styles.addTicketBtn} onPress={() => setShowAdd(true)}>
+            <Feather name="camera" size={16} color={colors.primary} />
+            <Text style={styles.addTicketText}>Add a ticket — just a photo</Text>
+          </Pressable>
+        )}
         {certs === null ? (
           <ActivityIndicator color={colors.primary} />
         ) : certs.length === 0 ? (
           <Text style={styles.emptyText}>
-            No certifications on file — the worker adds them under My Tickets, or ask them for paper copies.
+            No tickets on file yet — add one with a photo, or the worker can add their own under My Tickets.
           </Text>
         ) : certs.map((c) => {
           const st = expiryStatus(c);
@@ -180,7 +189,7 @@ export default function WorkerDetail() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowMain}>{c.displayName || c.customName || c.type}</Text>
                 <Text style={styles.rowSub}>
-                  {c.issuer}{c.certificateNumber ? ` · #${c.certificateNumber}` : ''} · issued {fmtDate(c.issuedAt)}
+                  {[c.issuer, c.certificateNumber ? `#${c.certificateNumber}` : '', `added ${fmtDate(c.createdAt ?? c.issuedAt)}`].filter(Boolean).join(' · ')}
                 </Text>
                 {unverified && (
                   <Text style={styles.unverifiedText}>
@@ -205,10 +214,37 @@ export default function WorkerDetail() {
               ) : (
                 <Text style={[styles.statusText, { color: tone }]}>{statusText}</Text>
               )}
+              {!!c.documentStoragePath && (
+                <Pressable onPress={() => openTicketPhoto(c.documentStoragePath)} hitSlop={8} accessibilityLabel="View ticket photo">
+                  <Feather name="image" size={18} color={colors.primary} />
+                </Pressable>
+              )}
+              {me?.role === 'admin' && (
+                <Pressable
+                  hitSlop={8} accessibilityLabel="Delete ticket"
+                  onPress={() => confirm('Delete this ticket?', `“${c.displayName || 'Ticket'}” will be removed from this worker.`, async () => {
+                    try {
+                      await deleteDoc(doc(db, 'users', uid!, 'certifications', c.id));
+                      if (c.documentStoragePath) await deleteObject(ref(storage, c.documentStoragePath)).catch(() => {});
+                      toast('Ticket deleted');
+                      await load();
+                    } catch (e) { notify('Could not delete', e instanceof Error ? e.message : String(e)); }
+                  }, 'Delete')}
+                >
+                  <Feather name="trash-2" size={18} color={colors.danger} />
+                </Pressable>
+              )}
             </View>
           );
         })}
       </ScrollView>
+      {!!uid && !!me && (
+        <AddTicketModal
+          visible={showAdd} workerUid={uid} byUid={me.uid} verified
+          onClose={() => setShowAdd(false)}
+          onAdded={async () => { setShowAdd(false); await load(); }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -275,6 +311,12 @@ const styles = StyleSheet.create({
     marginTop: 2, fontSize: typography.sizes.xs,
     color: colors.warning, fontWeight: typography.weights.semibold,
   },
+  addTicketBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radii.md, borderStyle: 'dashed',
+    paddingVertical: spacing.md, marginBottom: spacing.sm,
+  },
+  addTicketText: { color: colors.primary, fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
   verifyBtn: {
     backgroundColor: colors.primary, borderRadius: radii.md,
     paddingVertical: spacing.sm, paddingHorizontal: spacing.md,

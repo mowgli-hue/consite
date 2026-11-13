@@ -29,26 +29,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import {
-  addDoc,
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  Timestamp,
-} from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs } from 'firebase/firestore';
+import { deleteObject, ref } from 'firebase/storage';
 
-import { db } from '../../src/lib/firebase';
+import { db, storage } from '../../src/lib/firebase';
+import { AddTicketModal, openTicketPhoto } from '../../src/components/AddTicketModal';
+import { confirm, notify, toast } from '../../src/lib/notify';
 import { useAuth } from '../../src/contexts/AuthContext';
 import {
-  CERT_METADATA,
   type Certification,
-  type CertType,
   expiryStatus,
 } from '../../src/types/certification';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 
-const STANDARD_CERT_TYPES = Object.keys(CERT_METADATA) as Array<Exclude<CertType, 'other'>>;
 
 export default function CertificationsScreen() {
   const { user } = useAuth();
@@ -60,14 +53,11 @@ export default function CertificationsScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      const q = query(
-        collection(db, 'users', user.uid, 'certifications'),
-        orderBy('expiresAt', 'asc')
-      );
-      const snap = await getDocs(q);
-      setCerts(
-        snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Certification, 'id'>) }))
-      );
+      // No orderBy: it silently drops docs that have no expiresAt field.
+      const snap = await getDocs(collection(db, 'users', user.uid, 'certifications'));
+      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Certification, 'id'>) }));
+      list.sort((x, y) => (x.expiresAt ?? Infinity) - (y.expiresAt ?? Infinity));
+      setCerts(list);
     } catch (err) {
       console.warn('Cert load failed', err);
     } finally {
@@ -85,7 +75,7 @@ export default function CertificationsScreen() {
         <Pressable onPress={() => router.back()} hitSlop={8}>
           <Feather name="chevron-left" size={24} color={colors.text} />
         </Pressable>
-        <Text style={styles.title}>My Certifications</Text>
+        <Text style={styles.title}>My Tickets</Text>
         <Pressable onPress={() => setShowAdd(true)} hitSlop={8} style={styles.addButton}>
           <Feather name="plus" size={20} color={colors.textInverse} />
         </Pressable>
@@ -99,13 +89,13 @@ export default function CertificationsScreen() {
         <ScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.empty}>
             <Feather name="shield" size={32} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>No certifications yet</Text>
+            <Text style={styles.emptyTitle}>No tickets yet</Text>
             <Text style={styles.emptySub}>
-              Add your WHMIS, fall arrest, first aid, and other tickets so they're easy to show on site.
+              Take a picture of each ticket — WHMIS, fall arrest, first aid — so it's always with you on site.
             </Text>
             <Pressable style={styles.bigButton} onPress={() => setShowAdd(true)}>
               <Feather name="plus" size={18} color={colors.textInverse} />
-              <Text style={styles.bigButtonText}>Add a certification</Text>
+              <Text style={styles.bigButtonText}>Add a ticket (photo)</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -114,12 +104,15 @@ export default function CertificationsScreen() {
           data={certs}
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => <CertCard cert={item} />}
+          renderItem={({ item }) => <CertCard cert={item} uid={user!.uid} onChanged={load} />}
         />
       )}
 
-      <AddCertModal
+      <AddTicketModal
         visible={showAdd}
+        workerUid={user?.uid ?? ''}
+        byUid={user?.uid ?? ''}
+        verified={false}
         onClose={() => setShowAdd(false)}
         onAdded={async () => {
           setShowAdd(false);
@@ -130,28 +123,44 @@ export default function CertificationsScreen() {
   );
 }
 
-function CertCard({ cert }: { cert: Certification }) {
+function CertCard({ cert, uid, onChanged }: { cert: Certification; uid: string; onChanged: () => void }) {
   const status = expiryStatus(cert);
+  const verified = (cert as { verified?: boolean }).verified;
+  const sub = [cert.issuer, cert.certificateNumber].filter(Boolean).join(' · ');
+
+  function remove() {
+    confirm('Delete this ticket?', `“${cert.displayName}” will be removed.`, async () => {
+      try {
+        await deleteDoc(doc(db, 'users', uid, 'certifications', cert.id));
+        if (cert.documentStoragePath) await deleteObject(ref(storage, cert.documentStoragePath)).catch(() => {});
+        toast('Ticket deleted');
+        onChanged();
+      } catch (e) { notify('Could not delete', e instanceof Error ? e.message : String(e)); }
+    }, 'Delete');
+  }
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>{cert.displayName}</Text>
         <StatusBadge status={status} />
       </View>
+      {!!sub && <Text style={styles.cardSub}>{sub}</Text>}
       <Text style={styles.cardSub}>
-        {cert.issuer} {cert.certificateNumber ? `· ${cert.certificateNumber}` : ''}
+        {cert.expiresAt ? `Expires ${formatDate(cert.expiresAt)}` : 'No expiry date'}
+        {verified === false ? ' · waiting for the office to confirm' : ''}
       </Text>
       <View style={styles.cardDates}>
-        <View>
-          <Text style={styles.dateLabel}>Issued</Text>
-          <Text style={styles.dateValue}>{formatDate(cert.issuedAt)}</Text>
-        </View>
-        <View>
-          <Text style={styles.dateLabel}>Expires</Text>
-          <Text style={styles.dateValue}>
-            {cert.expiresAt ? formatDate(cert.expiresAt) : 'Never'}
-          </Text>
-        </View>
+        {cert.documentStoragePath ? (
+          <Pressable onPress={() => openTicketPhoto(cert.documentStoragePath)} hitSlop={8}>
+            <Text style={styles.linkText}>View photo</Text>
+          </Pressable>
+        ) : <View />}
+        {verified !== true && (
+          <Pressable onPress={remove} hitSlop={8} accessibilityLabel="Delete ticket">
+            <Feather name="trash-2" size={18} color={colors.danger} />
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -184,215 +193,6 @@ function StatusBadge({
     <View style={[styles.statusBadge, { backgroundColor: bg }]}>
       <Text style={[styles.statusText, { color: fg }]}>{text}</Text>
     </View>
-  );
-}
-
-function AddCertModal({
-  visible,
-  onClose,
-  onAdded,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onAdded: () => void;
-}) {
-  const { user } = useAuth();
-  const [selectedType, setSelectedType] = useState<CertType | null>(null);
-  const [customName, setCustomName] = useState('');
-  const [issuer, setIssuer] = useState('');
-  const [certNumber, setCertNumber] = useState('');
-  const [issuedDate, setIssuedDate] = useState('');
-  const [expiresDate, setExpiresDate] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  function reset() {
-    setSelectedType(null);
-    setCustomName('');
-    setIssuer('');
-    setCertNumber('');
-    setIssuedDate('');
-    setExpiresDate('');
-  }
-
-  function pickType(t: CertType) {
-    setSelectedType(t);
-    if (t !== 'other') {
-      const meta = CERT_METADATA[t];
-      setIssuer(meta.typicalIssuer);
-    } else {
-      setIssuer('');
-    }
-  }
-
-  async function save() {
-    if (!user || !selectedType) return;
-    if (selectedType === 'other' && !customName.trim()) {
-      Alert.alert('Missing name', 'Enter a name for this certification.');
-      return;
-    }
-    if (!issuedDate) {
-      Alert.alert('Missing date', 'Enter when this was issued (YYYY-MM-DD).');
-      return;
-    }
-    const issuedMs = Date.parse(issuedDate);
-    const expiresMs = expiresDate ? Date.parse(expiresDate) : null;
-    if (isNaN(issuedMs)) {
-      Alert.alert('Bad date', 'Issued date must be YYYY-MM-DD.');
-      return;
-    }
-    if (expiresMs != null && isNaN(expiresMs)) {
-      Alert.alert('Bad date', 'Expiry date must be YYYY-MM-DD.');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const displayName =
-        selectedType === 'other'
-          ? customName.trim()
-          : CERT_METADATA[selectedType].displayName;
-      await addDoc(collection(db, 'users', user.uid, 'certifications'), {
-        type: selectedType,
-        customName: selectedType === 'other' ? customName.trim() : null,
-        displayName,
-        issuer: issuer.trim(),
-        certificateNumber: certNumber.trim() || null,
-        issuedAt: issuedMs,
-        expiresAt: expiresMs,
-        createdAt: Date.now(),
-        createdBy: user.uid,
-        // Self-added tickets need office verification before they count
-        // toward safety checks (rules enforce this).
-        verified: false,
-      });
-      reset();
-      onAdded();
-    } catch (err: any) {
-      Alert.alert('Save failed', err.message ?? 'Try again.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.modalContainer} edges={['top']}>
-        <View style={styles.modalHeader}>
-          <Pressable onPress={onClose} hitSlop={8}>
-            <Feather name="x" size={24} color={colors.text} />
-          </Pressable>
-          <Text style={styles.modalTitle}>Add certification</Text>
-          <Pressable
-            disabled={saving}
-            onPress={save}
-            style={[styles.modalSave, saving && { opacity: 0.4 }]}
-          >
-            <Text style={styles.modalSaveText}>{saving ? 'Saving…' : 'Save'}</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-          <Text style={styles.modalLabel}>Type</Text>
-          <View style={styles.typeGrid}>
-            {STANDARD_CERT_TYPES.map((t) => (
-              <Pressable
-                key={t}
-                style={[styles.typePill, selectedType === t && styles.typePillActive]}
-                onPress={() => pickType(t)}
-              >
-                <Text
-                  style={[
-                    styles.typePillText,
-                    selectedType === t && styles.typePillTextActive,
-                  ]}
-                >
-                  {CERT_METADATA[t].displayName}
-                </Text>
-              </Pressable>
-            ))}
-            <Pressable
-              style={[styles.typePill, selectedType === 'other' && styles.typePillActive]}
-              onPress={() => pickType('other')}
-            >
-              <Text
-                style={[
-                  styles.typePillText,
-                  selectedType === 'other' && styles.typePillTextActive,
-                ]}
-              >
-                Other
-              </Text>
-            </Pressable>
-          </View>
-
-          {selectedType === 'other' && (
-            <>
-              <Text style={[styles.modalLabel, { marginTop: spacing.lg }]}>
-                Custom name
-              </Text>
-              <TextInput
-                style={styles.modalInput}
-                value={customName}
-                onChangeText={setCustomName}
-                placeholder="e.g. OSSA standard"
-                placeholderTextColor={colors.textTertiary}
-              />
-            </>
-          )}
-
-          <Text style={[styles.modalLabel, { marginTop: spacing.lg }]}>Issuer</Text>
-          <TextInput
-            style={styles.modalInput}
-            value={issuer}
-            onChangeText={setIssuer}
-            placeholder="BCCSA, Red Cross, etc."
-            placeholderTextColor={colors.textTertiary}
-          />
-
-          <Text style={[styles.modalLabel, { marginTop: spacing.lg }]}>
-            Certificate number (optional)
-          </Text>
-          <TextInput
-            style={styles.modalInput}
-            value={certNumber}
-            onChangeText={setCertNumber}
-            placeholder="e.g. ABC123456"
-            placeholderTextColor={colors.textTertiary}
-          />
-
-          <View style={styles.dateRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalLabel}>Issued (YYYY-MM-DD)</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={issuedDate}
-                onChangeText={setIssuedDate}
-                placeholder="2024-01-15"
-                placeholderTextColor={colors.textTertiary}
-                autoCapitalize="none"
-                keyboardType="numbers-and-punctuation"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalLabel}>Expires (optional)</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={expiresDate}
-                onChangeText={setExpiresDate}
-                placeholder="2027-01-15"
-                placeholderTextColor={colors.textTertiary}
-                autoCapitalize="none"
-                keyboardType="numbers-and-punctuation"
-              />
-            </View>
-          </View>
-
-          <Text style={styles.modalFootnote}>
-            v0.3 adds photo upload + AI extraction of cert details from the image. For now, type it in.
-          </Text>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
   );
 }
 
@@ -480,6 +280,7 @@ const styles = StyleSheet.create({
   },
 
   // Modal
+  linkText: { color: colors.primary, fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
   modalContainer: { flex: 1, backgroundColor: colors.background },
   modalHeader: {
     flexDirection: 'row',

@@ -371,6 +371,24 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────
+    // App settings — the company's own knobs (strict lifecycle, records
+    // email recipients…). Everyone signed in reads; admins change.
+    // ─────────────────────────────────────────────────────
+
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Feedback / change requests — anyone signed in can send one (as
+    // themselves); a Cloud Function emails it to us. Office reads.
+    match /feedback/{fid} {
+      allow create: if isSignedIn() &&
+                       request.resource.data.submittedBy == request.auth.uid;
+      allow read, delete: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────
     // CRM — clients and their communication log. The legal record of
     // who said what, when. Office only.
     // ─────────────────────────────────────────────────────

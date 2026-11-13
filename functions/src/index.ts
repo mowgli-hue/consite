@@ -12,7 +12,10 @@ import { initializeApp } from 'firebase-admin/app';
 initializeApp();
 
 // Admin / user provisioning
-export { createWorker } from './admin';
+export { createWorker, deleteWorker } from './admin';
+
+// Feedback / change requests → email to us
+export { onFeedbackCreated } from './feedback';
 
 // Firestore triggers
 export { onAttendanceCreated, onSubmissionCreated, onUserDeactivatedV2 } from './triggers';

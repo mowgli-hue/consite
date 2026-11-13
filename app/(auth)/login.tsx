@@ -8,10 +8,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { notify } from '../../src/lib/notify';
 import { colors, spacing, radii, typography } from '../../src/theme';
@@ -40,6 +41,24 @@ export default function LoginScreen() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function forgotPassword() {
+    const e = email.trim();
+    if (!e) {
+      notify('Enter your email first', 'Type your email in the box above, then tap “Forgot password?” again.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, e);
+    } catch (err: any) {
+      if (String(err?.code ?? '').includes('invalid-email')) {
+        notify('Check your email', 'That email address doesn’t look right.');
+        return;
+      }
+      // Any other failure: same message, so nobody can probe which emails exist.
+    }
+    notify('Check your email', `If ${e} has an account, a link to set a new password is on its way. Look in junk mail too.`);
   }
 
   const busy = submitting || loading;
@@ -94,6 +113,10 @@ export default function LoginScreen() {
               ) : (
                 <Text style={styles.buttonText}>Sign in</Text>
               )}
+            </Pressable>
+
+            <Pressable onPress={forgotPassword} disabled={busy} style={styles.forgot} accessibilityRole="button">
+              <Text style={styles.forgotText}>Forgot password?</Text>
             </Pressable>
 
             <Text style={styles.footnote}>
@@ -151,6 +174,8 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.md,
     fontWeight: typography.weights.semibold,
   },
+  forgot: { alignSelf: 'center', paddingVertical: spacing.md, marginTop: spacing.sm },
+  forgotText: { color: colors.primary, fontSize: typography.sizes.md, fontWeight: typography.weights.semibold },
   footnote: {
     marginTop: spacing.xl,
     textAlign: 'center',

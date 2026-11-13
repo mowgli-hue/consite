@@ -13,13 +13,13 @@ import {
   View, Text, StyleSheet, Pressable, ActivityIndicator, Image, Linking, Platform, ScrollView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { addDoc, collection, doc, getDoc, getDocs, limit, orderBy, query } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadString } from 'firebase/storage';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, updateDoc } from 'firebase/firestore';
+import { deleteObject, getDownloadURL, ref, uploadString } from 'firebase/storage';
 
 import { db, storage } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { LoadingState } from './LoadingState';
-import { notify } from '../lib/notify';
+import { notify, confirm, toast } from '../lib/notify';
 import { tsToMs } from '../lib/attendance';
 import type { Project } from '../types';
 import { colors, spacing, radii, typography, shadows } from '../theme';
@@ -40,6 +40,35 @@ function pickFileWeb(accept: string): Promise<{ name: string; base64: string; mi
     };
     input.click();
   });
+}
+
+/**
+ * Office delete for any hub item: asks first, removes the record, then
+ * best-effort removes its file. `after` refreshes the list.
+ */
+function removeItem(opts: {
+  what: string; docPath: string; storagePaths?: Array<string | undefined | null>; after: () => void;
+}) {
+  confirm(`Delete ${opts.what}?`, 'This removes it from the project for everyone.', async () => {
+    try {
+      await deleteDoc(doc(db, opts.docPath));
+      for (const sp of (opts.storagePaths ?? []).filter(Boolean) as string[]) {
+        await deleteObject(ref(storage, sp)).catch(() => { /* file already gone / not removable */ });
+      }
+      toast('Deleted');
+      opts.after();
+    } catch (e) {
+      notify('Delete failed', e instanceof Error ? e.message : String(e));
+    }
+  }, 'Delete');
+}
+
+function TrashButton({ onPress, label }: { onPress: () => void; label: string }) {
+  return (
+    <Pressable hitSlop={10} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.trashBtn}>
+      <Feather name="trash-2" size={17} color={colors.danger} />
+    </Pressable>
+  );
 }
 
 function AddButton({ label, onPress }: { label: string; onPress: () => void }) {
@@ -97,7 +126,7 @@ async function openStoragePath(path?: string | null, url?: string | null) {
 
 /* ── Photos ───────────────────────────────────────────── */
 
-interface Photo { id: string; url?: string; caption: string; by?: string; atMs?: number }
+interface Photo { id: string; url?: string; caption: string; by?: string; atMs?: number; docPath: string; storagePath?: string }
 
 export function PhotosTab({ projectId }: { projectId: string }) {
   const { user } = useAuth();
@@ -127,7 +156,7 @@ export function PhotosTab({ projectId }: { projectId: string }) {
       const snap = await getDocs(query(collection(db, 'projects', projectId, 'media'), limit(60)));
       for (const d of snap.docs) {
         const a = d.data() as { storagePath?: string; caption?: string; uploadedBy?: string; uploadedAt?: unknown };
-        out.push({ id: `m-${d.id}`, caption: a.caption ?? 'Site photo', by: a.uploadedBy, atMs: tsToMs(a.uploadedAt) ?? (a.uploadedAt as number | undefined), url: a.storagePath ? await getDownloadURL(ref(storage, a.storagePath)).catch(() => undefined) : undefined });
+        out.push({ id: `m-${d.id}`, docPath: `projects/${projectId}/media/${d.id}`, storagePath: a.storagePath, caption: a.caption ?? 'Site photo', by: a.uploadedBy, atMs: tsToMs(a.uploadedAt) ?? (a.uploadedAt as number | undefined), url: a.storagePath ? await getDownloadURL(ref(storage, a.storagePath)).catch(() => undefined) : undefined });
       }
     } catch { /* fine */ }
     try {
@@ -135,7 +164,7 @@ export function PhotosTab({ projectId }: { projectId: string }) {
       for (const d of snap.docs) {
         const a = d.data() as { photoPath?: string; summary?: string; displayName?: string; createdAt?: unknown };
         if (!a.photoPath) continue;
-        out.push({ id: `w-${d.id}`, caption: a.summary ?? 'Work update', by: a.displayName, atMs: tsToMs(a.createdAt), url: await getDownloadURL(ref(storage, a.photoPath)).catch(() => undefined) });
+        out.push({ id: `w-${d.id}`, docPath: `projects/${projectId}/workLog/${d.id}`, storagePath: a.photoPath, caption: a.summary ?? 'Work update', by: a.displayName, atMs: tsToMs(a.createdAt), url: await getDownloadURL(ref(storage, a.photoPath)).catch(() => undefined) });
       }
     } catch { /* fine */ }
     out.sort((a, b) => (b.atMs ?? 0) - (a.atMs ?? 0));
@@ -163,7 +192,12 @@ export function PhotosTab({ projectId }: { projectId: string }) {
         <Pressable key={p.id} style={styles.photoCard} onPress={() => p.url && Linking.openURL(p.url)}>
           <Image source={{ uri: p.url }} style={styles.photoImg} resizeMode="cover" />
           <Text style={styles.photoCaption} numberOfLines={2}>{p.caption}</Text>
-          <Text style={styles.photoMeta}>{p.by ? `${p.by} · ` : ''}{fmtWhen(p.atMs)}</Text>
+          <View style={styles.photoFoot}>
+            <Text style={[styles.photoMeta, { flex: 1 }]}>{fmtWhen(p.atMs)}</Text>
+            {canAdd && (
+              <TrashButton label="Delete photo" onPress={() => removeItem({ what: 'this photo', docPath: p.docPath, storagePaths: [p.storagePath], after: load })} />
+            )}
+          </View>
         </Pressable>
       ))}
     </View>
@@ -173,7 +207,7 @@ export function PhotosTab({ projectId }: { projectId: string }) {
 
 /* ── Documents (drawings + contract) ──────────────────── */
 
-interface DocRow { id: string; title: string; sub: string; icon: keyof typeof Feather.glyphMap; path?: string }
+interface DocRow { id: string; title: string; sub: string; icon: keyof typeof Feather.glyphMap; path?: string; isContract?: boolean }
 
 export function DocsTab({ project }: { project: Project }) {
   const { user } = useAuth();
@@ -201,7 +235,7 @@ export function DocsTab({ project }: { project: Project }) {
   const load = useCallback(async () => {
     const out: DocRow[] = [];
     if (project.contractPath) {
-      out.push({ id: 'contract', title: 'Signed contract', sub: 'Office-only · PDF', icon: 'file-text', path: project.contractPath });
+      out.push({ id: 'contract', isContract: true, title: 'Signed contract', sub: 'Office-only · PDF', icon: 'file-text', path: project.contractPath });
     }
     try {
       const snap = await getDocs(collection(db, 'projects', project.id, 'plans'));
@@ -240,6 +274,25 @@ export function DocsTab({ project }: { project: Project }) {
             <Text style={styles.rowSub}>{r.sub}</Text>
           </View>
           <Feather name="external-link" size={16} color={colors.textTertiary} />
+          {canAdd && (
+            <TrashButton
+              label={`Delete ${r.title}`}
+              onPress={() => {
+                if (r.isContract) {
+                  confirm('Remove the signed contract?', 'You can attach a new one on the Lifecycle tab.', async () => {
+                    try {
+                      await updateDoc(doc(db, 'projects', project.id), { contractPath: null });
+                      if (r.path) await deleteObject(ref(storage, r.path)).catch(() => {});
+                      setRows((list) => (list ?? []).filter((x) => x.id !== r.id));
+                      toast('Contract removed');
+                    } catch (e) { notify('Could not remove', e instanceof Error ? e.message : String(e)); }
+                  }, 'Remove');
+                } else {
+                  removeItem({ what: `“${r.title}”`, docPath: `projects/${project.id}/plans/${r.id}`, storagePaths: [r.path], after: load });
+                }
+              }}
+            />
+          )}
         </Pressable>
       ))}
     </View>
@@ -251,6 +304,8 @@ export function DocsTab({ project }: { project: Project }) {
 interface SubRow { id: string; schemaId: string; by?: string; atMs?: number; pdfPath?: string }
 
 export function FormsTab({ projectId }: { projectId: string }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [rows, setRows] = useState<SubRow[] | null>(null);
 
   const load = useCallback(async () => {
@@ -307,6 +362,12 @@ export function FormsTab({ projectId }: { projectId: string }) {
             <Text style={styles.rowSub}>{r.by ?? '—'} · {fmtWhen(r.atMs)}{r.pdfPath ? '' : ' · PDF rendering…'}</Text>
           </View>
           {r.pdfPath && <Feather name="external-link" size={16} color={colors.textTertiary} />}
+          {isAdmin && (
+            <TrashButton label="Delete form" onPress={() => removeItem({
+              what: `this ${r.schemaId}`, docPath: `projects/${projectId}/submissions/${r.id}`,
+              storagePaths: [r.pdfPath], after: load,
+            })} />
+          )}
         </Pressable>
       ))}
     </View>
@@ -318,7 +379,19 @@ export function FormsTab({ projectId }: { projectId: string }) {
 interface DefRow { id: string; title: string; status: string; severity?: string; atMs?: number; photoPath?: string }
 
 export function PunchTab({ projectId }: { projectId: string }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [rows, setRows] = useState<DefRow[] | null>(null);
+
+  async function setStatus(r: DefRow, status: 'open' | 'resolved') {
+    try {
+      await updateDoc(doc(db, 'projects', projectId, 'deficiencies', r.id), {
+        status, ...(status === 'resolved' ? { resolvedAt: Date.now(), resolvedBy: user?.uid ?? null } : {}),
+      });
+      toast(status === 'resolved' ? 'Marked fixed ✓' : 'Reopened');
+      await load();
+    } catch (e) { notify('Could not update', e instanceof Error ? e.message : String(e)); }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -353,6 +426,21 @@ export function PunchTab({ projectId }: { projectId: string }) {
             </Text>
           </View>
           {r.photoPath && <Feather name="image" size={16} color={colors.textTertiary} />}
+          {isAdmin && (
+            <>
+              <Pressable
+                style={styles.miniBtn}
+                onPress={() => setStatus(r, r.status === 'resolved' ? 'open' : 'resolved')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.miniBtnText}>{r.status === 'resolved' ? 'Reopen' : 'Mark fixed'}</Text>
+              </Pressable>
+              <TrashButton label="Delete punch item" onPress={() => removeItem({
+                what: `“${r.title}”`, docPath: `projects/${projectId}/deficiencies/${r.id}`,
+                storagePaths: [r.photoPath], after: load,
+              })} />
+            </>
+          )}
         </Pressable>
       ))}
     </View>
@@ -364,6 +452,8 @@ export function PunchTab({ projectId }: { projectId: string }) {
 interface LogRow { id: string; date: string; summary?: string; flagged?: boolean }
 
 export function LogsTab({ projectId }: { projectId: string }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [rows, setRows] = useState<LogRow[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [full, setFull] = useState<Record<string, string>>({});
@@ -398,6 +488,11 @@ export function LogsTab({ projectId }: { projectId: string }) {
             </Text>
           </View>
           <Feather name={openId === r.id ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
+          {isAdmin && (
+            <TrashButton label="Delete daily log" onPress={() => removeItem({
+              what: `the log for ${r.date}`, docPath: `projects/${projectId}/dailyLogs/${r.id}`, after: load,
+            })} />
+          )}
         </Pressable>
       ))}
     </View>
@@ -507,6 +602,13 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   crewAvatarText: { color: colors.primary, fontWeight: typography.weights.bold },
+  trashBtn: { padding: spacing.xs, marginLeft: spacing.xs },
+  photoFoot: { flexDirection: 'row', alignItems: 'center', paddingRight: spacing.sm },
+  miniBtn: {
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radii.md,
+    paddingVertical: 6, paddingHorizontal: spacing.md,
+  },
+  miniBtnText: { color: colors.primary, fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
     borderWidth: 1, borderColor: colors.primary, borderRadius: radii.md, borderStyle: 'dashed',

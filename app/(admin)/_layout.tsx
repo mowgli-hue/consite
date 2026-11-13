@@ -25,6 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Users', icon: 'users', route: '/(admin)/users', match: '/users', section: 'Admin' },
   { label: 'Clients', icon: 'phone', route: '/(admin)/clients', match: '/clients', section: 'Admin' },
   { label: 'Forms & Documents', icon: 'folder', route: '/(admin)/library', match: '/library', section: 'Admin' },
+  { label: 'Settings', icon: 'settings', route: '/(admin)/settings', match: '/settings', section: 'Admin' },
 ];
 
 // Phone bottom bar: the four everyday destinations; the rest in More.

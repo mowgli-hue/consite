@@ -14,8 +14,8 @@ import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
 
 import { db } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { notify } from '../../src/lib/notify';
-import { listAllProjects } from '../../src/lib/adminUsers';
+import { notify, confirm, toast } from '../../src/lib/notify';
+import { listAllProjects, deleteProjectCascade } from '../../src/lib/adminUsers';
 import { parseLatLng, searchUrl, embedUrl } from '../../src/lib/maps';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
 import type { Project } from '../../src/types';
@@ -230,6 +230,32 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: () 
       <Pressable style={[styles.button, busy && { opacity: 0.5 }]} disabled={busy} onPress={submit}>
         {busy ? <ActivityIndicator color={colors.textInverse} /> : <Text style={styles.buttonText}>{project ? 'Save changes' : 'Create project'}</Text>}
       </Pressable>
+
+      {project && (
+        // Your project, your call. "Active off" hides a finished job and
+        // keeps everything; Delete removes it for good.
+        <Pressable
+          style={styles.deleteBtn}
+          disabled={busy}
+          onPress={() => confirm(
+            `Delete “${project.name}”?`,
+            'This removes the project, its crew list and its phases. Hours, forms and photos recorded under it will no longer be visible.\n\nJust want it out of the way? Switch “Active” off instead — that keeps everything.',
+            async () => {
+              setBusy(true);
+              try {
+                await deleteProjectCascade(project.id);
+                toast('Project deleted', project.name);
+                onDone();
+              } catch (err: any) { notify('Delete failed', err.message); }
+              finally { setBusy(false); }
+            },
+            'Delete project',
+          )}
+        >
+          <Feather name="trash-2" size={16} color={colors.danger} />
+          <Text style={styles.deleteBtnText}>Delete this project</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -290,6 +316,11 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: spacing.sm },
   label: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.textSecondary },
   coordRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  deleteBtn: {
+    marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.danger, borderRadius: radii.md, paddingVertical: spacing.md,
+  },
+  deleteBtnText: { color: colors.danger, fontWeight: typography.weights.semibold },
   mapsHint: {
     fontSize: typography.sizes.xs, color: colors.textTertiary,
     marginBottom: spacing.sm, marginTop: -2,

@@ -12,10 +12,10 @@ import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { useAuth } from '../../src/contexts/AuthContext';
-import { notify, confirm } from '../../src/lib/notify';
+import { notify, confirm, toast } from '../../src/lib/notify';
 import {
   listUsers, listAllProjects, createWorkerAccount, setUserActive, setUserRole,
-  assignToProject, removeFromProject, setMemberRole, type MemberRole,
+  assignToProject, removeFromProject, setMemberRole, updateUserProfile, deleteUserAccount, type MemberRole,
 } from '../../src/lib/adminUsers';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../src/lib/firebase';
@@ -30,6 +30,33 @@ export default function AdminUsers() {
   const [showCreate, setShowCreate] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [memberRoles, setMemberRoles] = useState<Record<string, MemberRole>>({});
+  const [edit, setEdit] = useState<{ uid: string; name: string; phone: string } | null>(null);
+
+  async function saveEdit(u: User) {
+    if (!edit || !edit.name.trim()) { notify('Name needed', 'Enter the person’s name.'); return; }
+    try {
+      await updateUserProfile(u, { displayName: edit.name.trim(), phone: edit.phone.trim() || undefined });
+      setEdit(null);
+      toast('Saved ✓', edit.name.trim());
+      await load();
+    } catch (err: any) { notify('Could not save', err.message); }
+  }
+
+  function deleteUser(u: User) {
+    confirm(
+      `Delete ${u.displayName}’s account?`,
+      'They will no longer be able to sign in and come off every crew. Their past hours and signed forms are kept.\n\nNot sure? Switch “Active” off instead — you can turn it back on.',
+      async () => {
+        try {
+          await deleteUserAccount(u.uid);
+          toast('Account deleted', u.displayName);
+          setExpanded(null);
+          await load();
+        } catch (err: any) { notify('Delete failed', err.message); }
+      },
+      'Delete account',
+    );
+  }
 
   // When a user card expands, load their per-project roles.
   useEffect(() => {
@@ -160,6 +187,38 @@ export default function AdminUsers() {
                       <Text style={styles.profileLinkText}>Full profile — info, certifications & tickets</Text>
                       <Feather name="chevron-right" size={15} color={colors.primary} />
                     </Pressable>
+
+                    {me?.role === 'admin' && (
+                      edit?.uid === u.uid ? (
+                        <View style={{ marginTop: spacing.md }}>
+                          <Text style={styles.detailLabel}>Name</Text>
+                          <TextInput style={styles.input} value={edit.name} onChangeText={(t) => setEdit({ ...edit, name: t })} placeholder="Full name" placeholderTextColor={colors.textTertiary} />
+                          <Text style={styles.detailLabel}>Phone</Text>
+                          <TextInput style={styles.input} value={edit.phone} onChangeText={(t) => setEdit({ ...edit, phone: t })} placeholder="Phone" placeholderTextColor={colors.textTertiary} keyboardType="phone-pad" />
+                          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                            <Pressable style={[styles.roleChip, styles.roleChipOn]} onPress={() => saveEdit(u)}>
+                              <Text style={[styles.roleChipText, styles.roleChipTextOn]}>Save</Text>
+                            </Pressable>
+                            <Pressable style={styles.roleChip} onPress={() => setEdit(null)}>
+                              <Text style={styles.roleChipText}>Cancel</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+                          <Pressable style={styles.toolBtn} onPress={() => setEdit({ uid: u.uid, name: u.displayName ?? '', phone: u.phone ?? '' })}>
+                            <Feather name="edit-2" size={15} color={colors.primary} />
+                            <Text style={styles.toolBtnText}>Edit name / phone</Text>
+                          </Pressable>
+                          {u.uid !== me.uid && (
+                            <Pressable style={[styles.toolBtn, { borderColor: colors.danger }]} onPress={() => deleteUser(u)}>
+                              <Feather name="trash-2" size={15} color={colors.danger} />
+                              <Text style={[styles.toolBtnText, { color: colors.danger }]}>Delete account</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                      )
+                    )}
 
                     {me?.role === 'admin' && u.uid !== me.uid && (
                       <>
@@ -371,6 +430,12 @@ const styles = StyleSheet.create({
   sub: { fontSize: typography.sizes.sm, color: colors.textSecondary, marginTop: 1 },
 
   detail: { borderTopWidth: 1, borderColor: colors.border, padding: spacing.lg, paddingTop: spacing.md },
+  toolBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radii.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+  },
+  toolBtnText: { color: colors.primary, fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
   profileLink: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     backgroundColor: colors.primarySoft, borderRadius: radii.md,

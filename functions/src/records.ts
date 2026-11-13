@@ -208,7 +208,24 @@ async function emailRecord(opts: {
 }) {
   const { pdf, category, projectName, dateStr, personName, formTitle, subjectSuffix } = opts;
   const subject = `${category} · ${projectName} · ${dateStr} · ${personName}${subjectSuffix ?? ''}`;
-  const res = await fetch('https://api.resend.com/emails', {
+
+  // Recipients = the standing records address + whoever the company added
+  // in Settings → "Who gets the form PDFs". (settings/app.recordsEmails)
+  const primary = RECORDS_EMAIL.value();
+  let extra: string[] = [];
+  try {
+    const s = await getFirestore().collection('settings').doc('app').get();
+    const list = s.data()?.recordsEmails;
+    if (Array.isArray(list)) {
+      extra = list.map((e) => String(e).trim().toLowerCase())
+        .filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+    }
+  } catch (err) {
+    logger.warn('Could not read settings/app recipients — sending to primary only', err);
+  }
+  const recipients = [...new Set([primary, ...extra])];
+
+  const send = (to: string[]) => fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${RESEND_API_KEY.value()}`,
@@ -216,7 +233,7 @@ async function emailRecord(opts: {
     },
     body: JSON.stringify({
       from: RECORDS_FROM,
-      to: [RECORDS_EMAIL.value()],
+      to,
       subject,
       text:
         `${formTitle}\n\nProject: ${projectName}\nDate: ${dateStr}\nSubmitted by: ${personName}\n\n` +
@@ -227,6 +244,16 @@ async function emailRecord(opts: {
       }],
     }),
   });
+
+  let res = await send(recipients);
+  if (!res.ok && recipients.length > 1) {
+    // Resend TEST MODE rejects any recipient but the account owner until a
+    // sending domain is verified. Never lose the record over that — fall
+    // back to the primary address and say why in the logs.
+    logger.warn(`Resend rejected the full recipient list (${res.status}): ${await res.text()} — ` +
+      'retrying to the primary address only. Verify a domain in Resend to deliver to the others.');
+    res = await send([primary]);
+  }
 
   if (!res.ok) {
     logger.error(`Resend failed (${res.status}): ${await res.text()}`);

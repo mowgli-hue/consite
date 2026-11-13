@@ -138,3 +138,50 @@ async function addMembership(uid: string, projectId: string, assignedBy: string,
   });
   await updateDoc(doc(db, 'projects', projectId), { memberUids: arrayUnion(uid) });
 }
+
+// ─────────────────────────────────────────────────────────────
+// Self-service edits & deletes — the office runs its own data.
+// ─────────────────────────────────────────────────────────────
+
+/** Rename a person / fix their phone; keeps crew-member names in sync. */
+export async function updateUserProfile(
+  u: Pick<User, 'uid' | 'projectIds'>,
+  patch: { displayName: string; phone?: string },
+) {
+  await updateDoc(doc(db, 'users', u.uid), {
+    displayName: patch.displayName,
+    phone: patch.phone ?? null,
+  });
+  // Foremen read names off the member docs — mirror the rename there.
+  await Promise.all((u.projectIds ?? []).map((pid) =>
+    setDoc(doc(db, 'projects', pid, 'members', u.uid), { displayName: patch.displayName }, { merge: true })
+      .catch(() => { /* stale assignment — nothing to sync */ })));
+}
+
+/** Delete an account for good (sign-in + profile + crew spots). Hours and forms stay. */
+export async function deleteUserAccount(uid: string): Promise<void> {
+  const fn = httpsCallable<{ uid: string }, { ok: boolean }>(functions, 'deleteWorker');
+  await fn({ uid });
+}
+
+/**
+ * Delete a project: the project itself, its crew list and build phases,
+ * and the assignment on every worker. Hours/forms/photos recorded under
+ * it stop being visible in the app (use "Active off" to merely hide a
+ * finished job and keep everything).
+ */
+export async function deleteProjectCascade(projectId: string): Promise<void> {
+  const projRef = doc(db, 'projects', projectId);
+  try {
+    const members = await getDocs(collection(db, 'projects', projectId, 'members'));
+    await Promise.all(members.docs.map(async (m) => {
+      await updateDoc(doc(db, 'users', m.id), { projectIds: arrayRemove(projectId) }).catch(() => {});
+      await deleteDoc(m.ref).catch(() => {});
+    }));
+  } catch { /* no crew */ }
+  try {
+    const phases = await getDocs(collection(db, 'projects', projectId, 'phases'));
+    await Promise.all(phases.docs.map((p) => deleteDoc(p.ref).catch(() => {})));
+  } catch { /* no phases */ }
+  await deleteDoc(projRef);
+}

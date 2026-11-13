@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
-  addDoc, collection, doc, getDoc, getDocs, orderBy, query, updateDoc, writeBatch,
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, updateDoc, writeBatch,
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getDownloadURL, ref, uploadString } from 'firebase/storage';
@@ -20,6 +20,7 @@ import { getDownloadURL, ref, uploadString } from 'firebase/storage';
 import { db, functions, storage } from '../../src/lib/firebase';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { notify, confirm } from '../../src/lib/notify';
+import { loadAppSettings } from '../../src/lib/settings';
 import {
   STAGES, STAGE_LABELS, PHASE_TEMPLATES, computeStageChecks, stageIndex,
   type Stage, type StageCheck, type Phase,
@@ -42,6 +43,13 @@ export default function ProjectLifecycle() {
   const [clients, setClients] = useState<Array<{ id: string; company: string }>>([]);
   const [valueDraft, setValueDraft] = useState('');
   const [hubTab, setHubTab] = useState<HubTab>('lifecycle');
+  // Settings → "Require every check": OFF by default, so the checklist
+  // guides instead of blocking (client request — don't make it conditional).
+  const [strict, setStrict] = useState(false);
+  const [phaseEdit, setPhaseEdit] = useState<{ id: string; name: string } | null>(null);
+  const [newPhase, setNewPhase] = useState('');
+
+  useEffect(() => { loadAppSettings().then((s) => setStrict(s.strictLifecycle)); }, []);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -94,28 +102,102 @@ export default function ProjectLifecycle() {
     await load();
   }
 
+  const openItems = (checks ?? []).filter((c) => !c.pass).length;
+  // Relaxed (default): always free to move. Strict: checklist must be green.
+  const canAdvance = strict ? allPass : true;
+
   async function advanceStage() {
     const idx = stageIndex(stage);
     const next = idx >= STAGES.length - 1 ? 'archived' : STAGES[idx + 1];
+    const base = next === 'archived'
+      ? 'The project is filed as a finished job. You can reopen it any time.'
+      : 'The whole team sees the new stage.';
     confirm(
       next === 'archived' ? 'Close out this project?' : `Advance to ${STAGE_LABELS[next as Stage] ?? next}?`,
-      next === 'archived'
-        ? 'The project archives as a permanent, searchable record.'
-        : 'The whole team sees the new stage.',
+      !strict && openItems > 0
+        ? `${openItems} checklist item${openItems === 1 ? ' is' : 's are'} still open — that’s OK, you can finish ${openItems === 1 ? 'it' : 'them'} later.\n\n${base}`
+        : base,
       () => (async () => {
-        // Re-verify against LIVE data at the moment of the tap — the
-        // rendered checks may be stale (deficiency filed 5 minutes ago).
         if (!project) return;
-        const fresh = await computeStageChecks(project, phases);
-        if (fresh.length === 0 || !fresh.every((c) => c.pass)) {
-          notify('Not ready', 'A check changed since this screen loaded — review the list below.');
-          await load();
-          return;
+        if (strict) {
+          // Strict mode re-verifies against LIVE data at the moment of the
+          // tap — the rendered checks may be stale.
+          const fresh = await computeStageChecks(project, phases);
+          if (fresh.length === 0 || !fresh.every((c) => c.pass)) {
+            notify('Not ready', 'A check changed since this screen loaded — review the list below.');
+            await load();
+            return;
+          }
         }
         await patchProject({ stage: next });
       })().catch((e) => notify('Advance failed', e.message)),
       next === 'archived' ? 'Close out' : 'Advance',
     );
+  }
+
+  /** Jump straight to any stage — forward, back, or reopen a closed job. */
+  function moveToStage(target: Stage) {
+    if (!isAdmin || target === project?.stage) return;
+    confirm(
+      `Move this project to ${STAGE_LABELS[target]}?`,
+      'You can move it again any time.',
+      () => patchProject({ stage: target }).catch((e) => notify('Could not move', e.message)),
+      'Move',
+    );
+  }
+
+  // ── Phases: the office edits its own plan ──────────────────
+  async function addPhase() {
+    const name = newPhase.trim();
+    if (!id || !name) return;
+    try {
+      const order = phases.reduce((m, p) => Math.max(m, p.order ?? 0), 0) + 1;
+      await addDoc(collection(db, 'projects', id, 'phases'), {
+        name, order, status: phases.length === 0 ? 'active' : 'pending', invoiceMilestone: false,
+      });
+      setNewPhase('');
+      await load();
+    } catch (e) { notify('Could not add phase', (e as Error).message); }
+  }
+
+  async function savePhaseName() {
+    if (!id || !phaseEdit) return;
+    const name = phaseEdit.name.trim();
+    if (!name) { setPhaseEdit(null); return; }
+    try {
+      await updateDoc(doc(db, 'projects', id, 'phases', phaseEdit.id), { name });
+      setPhaseEdit(null);
+      await load();
+    } catch (e) { notify('Could not rename', (e as Error).message); }
+  }
+
+  async function toggleMilestone(p: Phase) {
+    if (!id) return;
+    try {
+      await updateDoc(doc(db, 'projects', id, 'phases', p.id), { invoiceMilestone: !p.invoiceMilestone });
+      await load();
+    } catch (e) { notify('Could not update', (e as Error).message); }
+  }
+
+  function removePhase(p: Phase) {
+    if (!id) return;
+    confirm(
+      `Delete phase “${p.name}”?`,
+      p.invoicedAt ? 'This phase was marked invoiced — undo that in Money first.' : 'This removes it from the plan.',
+      async () => {
+        try { await deleteDoc(doc(db, 'projects', id, 'phases', p.id)); await load(); }
+        catch (e) { notify('Could not delete', (e as Error).message); }
+      },
+      'Delete',
+    );
+  }
+
+  async function reopenPhase(p: Phase) {
+    if (!id) return;
+    try {
+      await updateDoc(doc(db, 'projects', id, 'phases', p.id), { status: 'active', completedAt: null, completedBy: null });
+      await load();
+    } catch (e) { notify('Could not reopen', (e as Error).message); }
   }
 
   async function createPhasesFromTemplate(templateName: string) {
@@ -231,7 +313,13 @@ export default function ProjectLifecycle() {
             const cur = stageIndex(stage);
             const state = project.stage === 'archived' ? 'done' : i < cur ? 'done' : i === cur ? 'current' : 'todo';
             return (
-              <View key={s} style={styles.step}>
+              <Pressable
+                key={s} style={styles.step}
+                disabled={!isAdmin}
+                onPress={() => moveToStage(s)}
+                accessibilityRole="button"
+                accessibilityLabel={`Move project to ${STAGE_LABELS[s]}`}
+              >
                 <View style={[styles.stepDot,
                   state === 'done' && { backgroundColor: colors.success },
                   state === 'current' && { backgroundColor: colors.primary },
@@ -243,20 +331,29 @@ export default function ProjectLifecycle() {
                 <Text style={[styles.stepLabel, state === 'current' && { color: colors.primary, fontWeight: typography.weights.bold }]}>
                   {STAGE_LABELS[s]}
                 </Text>
-              </View>
+              </Pressable>
             );
           })}
         </View>
+        {isAdmin && (
+          <Text style={styles.stepperHint}>Tap any stage to move the project there — forward or back.</Text>
+        )}
 
         {project.stage === 'archived' ? (
           <View style={styles.archived}>
             <Feather name="check-circle" size={40} color={colors.success} />
             <Text style={styles.archivedText}>Project closed out — permanent searchable record.</Text>
+            {isAdmin && (
+              <Pressable style={styles.reopenBtn} onPress={() => moveToStage('closeout')}>
+                <Feather name="rotate-ccw" size={16} color={colors.primary} />
+                <Text style={styles.reopenText}>Reopen this project</Text>
+              </Pressable>
+            )}
           </View>
         ) : (
           <>
             {/* Current stage checklist */}
-            <Text style={styles.sectionLabel}>{STAGE_LABELS[stage]} — what the app can verify</Text>
+            <Text style={styles.sectionLabel}>{STAGE_LABELS[stage]} checklist{strict ? '' : ' — a guide, not required'}</Text>
             {checks === null ? (
               <ActivityIndicator color={colors.primary} />
             ) : checks.length === 0 ? (
@@ -268,7 +365,7 @@ export default function ProjectLifecycle() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.checkLabel}>Couldn’t verify this stage</Text>
                   <Text style={styles.checkInstruction}>
-                    The checklist couldn’t be read (connection or server rules). Leave and reopen this project to retry — the Advance button stays locked until checks pass.
+                    The checklist couldn’t be read just now (connection). Leave and reopen this project to retry.
                   </Text>
                 </View>
               </View>
@@ -363,29 +460,72 @@ export default function ProjectLifecycle() {
                       <Text style={styles.phaseBtnText}>{p.status === 'pending' ? 'Start' : 'Complete'}</Text>
                     </Pressable>
                   )}
+                  {isAdmin && (
+                    <View style={styles.phaseTools}>
+                      {p.status === 'done' && (
+                        <Pressable hitSlop={8} onPress={() => reopenPhase(p)} accessibilityLabel="Reopen phase">
+                          <Feather name="rotate-ccw" size={17} color={colors.textSecondary} />
+                        </Pressable>
+                      )}
+                      <Pressable hitSlop={8} onPress={() => toggleMilestone(p)} accessibilityLabel="Toggle invoice milestone">
+                        <Feather name="dollar-sign" size={17} color={p.invoiceMilestone ? colors.primary : colors.borderStrong} />
+                      </Pressable>
+                      <Pressable hitSlop={8} onPress={() => setPhaseEdit({ id: p.id, name: p.name })} accessibilityLabel="Rename phase">
+                        <Feather name="edit-2" size={17} color={colors.textSecondary} />
+                      </Pressable>
+                      <Pressable hitSlop={8} onPress={() => removePhase(p)} accessibilityLabel="Delete phase">
+                        <Feather name="trash-2" size={17} color={colors.danger} />
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               ))
             )}
 
-            {/* Advance */}
+            {isAdmin && phaseEdit && (
+              <View style={styles.phaseAddRow}>
+                <TextInput
+                  style={[styles.phaseInput, { flex: 1 }]} autoFocus
+                  value={phaseEdit.name} onChangeText={(t) => setPhaseEdit({ ...phaseEdit, name: t })}
+                  onSubmitEditing={savePhaseName} placeholder="Phase name" placeholderTextColor={colors.textTertiary}
+                />
+                <Pressable style={styles.phaseBtn} onPress={savePhaseName}><Text style={styles.phaseBtnText}>Save</Text></Pressable>
+                <Pressable hitSlop={8} onPress={() => setPhaseEdit(null)}><Feather name="x" size={20} color={colors.textSecondary} /></Pressable>
+              </View>
+            )}
+            {isAdmin && !phaseEdit && (
+              <View style={styles.phaseAddRow}>
+                <TextInput
+                  style={[styles.phaseInput, { flex: 1 }]}
+                  value={newPhase} onChangeText={setNewPhase} onSubmitEditing={addPhase}
+                  placeholder="Add your own phase — e.g. Deck framing" placeholderTextColor={colors.textTertiary}
+                />
+                <Pressable style={[styles.phaseBtn, !newPhase.trim() && { opacity: 0.4 }]} disabled={!newPhase.trim()} onPress={addPhase}>
+                  <Text style={styles.phaseBtnText}>+ Add</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* Advance — free by default; locked only in strict mode */}
             {isAdmin && (
               <Pressable
-                style={[styles.advanceBtn, !allPass && styles.advanceBtnDisabled]}
-                disabled={!allPass}
+                style={[styles.advanceBtn, !canAdvance && styles.advanceBtnDisabled]}
+                disabled={!canAdvance}
                 onPress={advanceStage}
               >
                 <Feather name={stage === 'closeout' ? 'archive' : 'arrow-right-circle'} size={18} color={colors.textInverse} />
                 <Text style={styles.advanceText}>
-                  {allPass
+                  {canAdvance
                     ? stage === 'closeout' ? 'Close out project' : `Advance to ${STAGE_LABELS[STAGES[stageIndex(stage) + 1] as Stage] ?? 'next'}`
-                    : `Finish ${(checks ?? []).filter((c) => !c.pass).length || 'the'} item${(checks ?? []).filter((c) => !c.pass).length === 1 ? '' : 's'} above to advance`}
+                    : `Finish ${openItems || 'the'} item${openItems === 1 ? '' : 's'} above to advance`}
                 </Text>
               </Pressable>
             )}
-            {isAdmin && !allPass && checks !== null && checks.length > 0 && (
-              // Say WHY it's locked, right under the button (UX audit H3).
+            {isAdmin && checks !== null && openItems > 0 && (
               <Text style={styles.advanceWhy}>
-                Locked until every check above passes — each red item says exactly how to clear it.
+                {strict
+                  ? 'Locked until every check above passes (Settings → Projects turns this off).'
+                  : `${openItems} item${openItems === 1 ? '' : 's'} still open — you can advance anyway and finish later.`}
               </Text>
             )}
           </>
@@ -416,6 +556,19 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   stepNum: { fontSize: typography.sizes.xs, color: colors.textSecondary, fontWeight: typography.weights.bold },
+  stepperHint: { fontSize: typography.sizes.xs, color: colors.textTertiary, textAlign: 'center', marginTop: spacing.sm },
+  reopenBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md,
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radii.md,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.lg,
+  },
+  reopenText: { color: colors.primary, fontWeight: typography.weights.semibold },
+  phaseTools: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginLeft: spacing.sm },
+  phaseAddRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  phaseInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.md,
+    color: colors.text, backgroundColor: colors.surface, fontSize: typography.sizes.md,
+  },
   stepLabel: { fontSize: 10, color: colors.textSecondary, marginTop: 4, textAlign: 'center' },
 
   sectionLabel: {

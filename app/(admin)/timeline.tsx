@@ -10,11 +10,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { getDownloadURL, ref } from 'firebase/storage';
 
 import { db, storage } from '../../src/lib/firebase';
-import { notify } from '../../src/lib/notify';
+import { notify, confirm, toast } from '../../src/lib/notify';
+import { useAuth } from '../../src/contexts/AuthContext';
 import { listAllProjects } from '../../src/lib/adminUsers';
 import { tsToMs } from '../../src/lib/attendance';
 import { colors, spacing, radii, typography, shadows } from '../../src/theme';
@@ -31,6 +32,21 @@ export default function SiteTimeline() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Filter the feed to one person — "what did Harjeet post on this job?"
+  const [worker, setWorker] = useState<string>('all');
+  const { user: me } = useAuth();
+  const isAdmin = me?.role === 'admin';
+
+  function removeEntry(e: Entry) {
+    if (!projectId) return;
+    confirm('Delete this update?', `${e.displayName}: ${e.summary.slice(0, 80)}`, async () => {
+      try {
+        await deleteDoc(doc(db, 'projects', projectId, 'workLog', e.id));
+        setEntries((list) => (list ?? []).filter((x) => x.id !== e.id));
+        toast('Update deleted');
+      } catch (err: any) { notify('Delete failed', err.message); }
+    }, 'Delete');
+  }
 
   useEffect(() => {
     (async () => {
@@ -45,6 +61,7 @@ export default function SiteTimeline() {
   const load = useCallback(async () => {
     if (!projectId) return;
     setEntries(null);
+    setWorker('all');
     try {
       const snap = await getDocs(query(
         collection(db, 'projects', projectId, 'workLog'),
@@ -78,9 +95,12 @@ export default function SiteTimeline() {
 
   useEffect(() => { load(); }, [load]);
 
+  const workerNames = [...new Set((entries ?? []).map((e) => e.displayName))].sort();
+  const shown = (entries ?? []).filter((e) => worker === 'all' || e.displayName === worker);
+
   // Group by day
   const groups = new Map<string, Entry[]>();
-  for (const e of entries ?? []) {
+  for (const e of shown) {
     const day = new Date(e.ms).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
     if (!groups.has(day)) groups.set(day, []);
     groups.get(day)!.push(e);
@@ -108,6 +128,19 @@ export default function SiteTimeline() {
           ))}
         </View>
 
+        {workerNames.length > 1 && (
+          <View style={[styles.chips, { marginTop: spacing.sm }]}>
+            <Pressable style={[styles.chip, worker === 'all' && styles.chipOn]} onPress={() => setWorker('all')}>
+              <Text style={[styles.chipText, worker === 'all' && styles.chipTextOn]}>All workers</Text>
+            </Pressable>
+            {workerNames.map((n) => (
+              <Pressable key={n} style={[styles.chip, worker === n && styles.chipOn]} onPress={() => setWorker(n)}>
+                <Text style={[styles.chipText, worker === n && styles.chipTextOn]}>{n}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         {entries === null ? (
           <ActivityIndicator color={colors.primary} style={{ marginTop: spacing['3xl'] }} />
         ) : entries.length === 0 ? (
@@ -132,6 +165,11 @@ export default function SiteTimeline() {
                     </Text>
                     {!!e.quantities && <Text style={styles.qty}>📦 {e.quantities}</Text>}
                     {!!e.flags && <Text style={styles.flags}>⚠ {e.flags}</Text>}
+                    {isAdmin && (
+                      <Pressable hitSlop={8} onPress={() => removeEntry(e)} style={{ alignSelf: 'flex-end', marginTop: spacing.xs }} accessibilityLabel="Delete update">
+                        <Feather name="trash-2" size={16} color={colors.danger} />
+                      </Pressable>
+                    )}
                   </View>
                 </View>
               ))}

@@ -31,15 +31,20 @@ service firebase.storage {
     match /projects/{pid}/plans/{planId}/{filename} {
       allow read: if isProjectMember(pid) || isAdmin();
       // Foremen photograph/upload drawings from the field.
-      allow write: if (isAdmin() ||
+      allow create, update: if (isAdmin() ||
                       (isProjectMember(pid) && memberRole(pid) in ['foreman', 'lead-foreman', 'supervisor']))
                    && request.resource.size < 25 * 1024 * 1024;
+      allow delete: if isAdmin();
     }
 
     match /projects/{pid}/media/{mediaId}/{filename} {
       allow read: if isProjectMember(pid) || isAdmin();
-      allow write: if (isProjectMember(pid) || isAdmin())
+      allow create, update: if (isProjectMember(pid) || isAdmin())
                    && request.resource.size < 25 * 1024 * 1024;   // 25 MB cap
+      // Office can remove a photo/file it no longer wants (the old
+      // `write` rule read request.resource.size, which is null on delete,
+      // so deletes were impossible for everyone).
+      allow delete: if isAdmin();
     }
 
     // Signed contracts — the money document. Office-only, like
@@ -81,6 +86,17 @@ service firebase.storage {
     // ──────────────────────────────────────────────
     // User avatars
     // ──────────────────────────────────────────────
+
+    // Ticket / certification photos — "just upload the picture". The
+    // worker and the office can see and add them; office can remove.
+    match /users/{uid}/certifications/{filename} {
+      allow read: if isSignedIn() &&
+                     (request.auth.uid == uid || userRole() in ['admin', 'manager']);
+      allow create, update: if isSignedIn() &&
+                     (request.auth.uid == uid || isAdmin()) &&
+                     request.resource.size < 15 * 1024 * 1024;
+      allow delete: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+    }
 
     match /users/{uid}/avatar/{filename} {
       allow read: if isSignedIn();
